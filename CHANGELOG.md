@@ -106,16 +106,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Guest / External User MFA Enforcement Model
 
-| External User Type | MFA Enforced By | Can Use Destination Tenant MFA? |
-|---|---|---|
-| **Local guest users** | Destination (resource) tenant | ✅ Yes — account exists only in your tenant |
-| **B2B collaboration guest users** | Destination (resource) tenant | ✅ Yes — resource tenant enforces MFA by default |
-| B2B collaboration member users | Home (source) tenant | ❌ Home tenant MFA, trusted via cross-tenant settings |
-| B2B direct connect users | Home (source) tenant | ❌ Home tenant MFA, trusted via cross-tenant settings |
-| Service provider users | Home (source) tenant | ❌ Partner tenant manages MFA (GDAP/CSP) |
-| Other external users | Home (source) tenant | ❌ Home tenant MFA |
+> 📘 **Full reference:** see [docs/external-user-mfa-reference.md](docs/external-user-mfa-reference.md) for per-type detail, supported method tables, and authentication strength matrix.
 
-> **Local guest users** and **B2B collaboration guest users** can register and complete MFA directly in your tenant. The other four types rely on their home tenant's MFA — your tenant can choose to trust those claims via **Cross-Tenant Access Settings** (inbound trust).
+Where MFA completes depends on **two** things: (1) whether the user authenticates via Entra ID, and (2) whether inbound cross-tenant MFA trust is configured. Without trust, even Entra-backed B2B guests complete MFA at the resource tenant — the home tenant path is opt-in.
+
+| CA External User Type | Identity Provider | MFA Enforced By | Auth Strength Support | Cross-Tenant Trust Required |
+|---|---|---|---|---|
+| **Local / Internal Guest** (`internalGuest`) | Your own tenant | Resource tenant — always | ✅ Full method set | No |
+| **B2B Collab Guest** (`b2bCollaborationGuest`) — Entra-backed | External Entra tenant | Either (trust-dependent) | ✅ Supported | Optional (enables home tenant path) |
+| **B2B Collab Guest** (`b2bCollaborationGuest`) — non-Entra | Google / OTP / SAML / WS-Fed | Resource tenant — always | ❌ NOT supported (use basic `mfa`) | N/A |
+| **B2B Collab Member** (`b2bCollaborationMember`) | External Entra tenant | Either (trust-dependent) | ✅ Supported | Optional (enables home tenant path) |
+| **B2B Direct Connect** (`b2bDirectConnectUser`) | External Entra tenant | Home tenant — mandatory | ✅ Supported (home methods only) | **REQUIRED** (else blocked) |
+| **Service Provider** (`serviceProvider`) — GDAP/CSP | Partner Entra tenant | Home tenant — always | Partial (home methods only) | Auto-trusted by Microsoft |
+| **Other External** (`otherExternalUser`) | Non-Entra | Resource tenant — always | ❌ NOT supported (use basic `mfa`) | N/A |
+
+> ⚠️ **Heterogeneity warning:** `b2bCollaborationGuest` contains BOTH Entra-backed and non-Entra guests. CA cannot filter within this type by IdP. If your guest population is mixed, use the basic `mfa` grant control — authentication strength will **block** non-Entra guests instead of prompting them.
+>
+> ⚠️ **Auth strength hard line:** non-Entra IdP users (Google, email OTP, SAML/WS-Fed) cannot satisfy authentication strength regardless of which CA user type they land under. Phishing-resistant methods (FIDO2, WHfB, CBA, OATH hardware) are only usable from the **home tenant** — inbound MFA trust must be configured to use them.
 
 ### Added
 - **Comprehensive Break-Glass Account Review** - New tenant-wide analysis to validate emergency access protection
