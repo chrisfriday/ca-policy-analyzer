@@ -138,17 +138,32 @@ The six types cannot all share the same grant control because `b2bCollaborationG
 - **Portal label:** Service provider users
 - **UserType in directory:** External — isServiceProvider = true
 - **Who:** GDAP/CSP partner technicians administering your tenant
-- **MFA enforced by:** Home tenant — **always**. Hardcoded by Microsoft. Cannot be changed regardless of trust settings.
+- **MFA enforced by:** Home tenant — always required. However, "always trusted" only applies to **native Microsoft Entra MFA claims**. Non-native methods (DUO, RSA, Silverfort via Custom Controls) are NOT trusted cross-tenant and will block the user.
 
 | Where MFA completes | Supported methods |
 |---|---|
 | **Resource tenant** | ❌ Not applicable — resource tenant MFA registration not supported for GDAP users |
-| **Home tenant** (auto-trusted by Microsoft) | Any method the partner's home tenant supports |
+| **Home tenant** (auto-trusted for native Entra MFA only) | SMS, Voice, Authenticator push, Authenticator phone sign-in, OATH software/hardware, FIDO2, WHfB, CBA — native Entra methods only |
 
-**Authentication strength support:** ✅ Applicable — but home tenant methods only. Verify partner MFA methods align with your allowed combinations. If a partner only has SMS and your strength excludes SMS, they will be blocked.
-**Assign to:** Policy 1 — auth strength
+**Authentication strength support:** ⚠️ Applicable in theory — but this is the most common source of GDAP partner blockage in practice. See warning below.
 
-> ℹ️ GDAP home tenant MFA is always automatically trusted in the resource tenant — no cross-tenant trust configuration needed.
+**Assign to:** Policy 1 (auth strength) — **only if** partner tenants use native Entra MFA methods. If any partner uses DUO or another Custom Control EAM, exclude `serviceProvider` entirely or use basic `mfa` grant.
+
+> ⚠️ **Why GDAP partners get blocked — verified from MS Learn:**
+>
+> **1. Custom Controls (DUO, RSA, Silverfort) are not trusted cross-tenant.**
+> MS Learn explicitly states: *"Custom Controls with Conditional Access are not supported for cross-tenant trusts."* If a partner's home tenant uses DUO or another External Authentication Method via Custom Controls, their MFA claim cannot be passed across to the resource tenant. The user completes MFA in their home tenant but the resource tenant CA policy cannot verify the Custom Control claim — result: **blocked**.
+>
+> **2. Authentication strength method mismatch blocks access.**
+> If the resource tenant CA policy requires `Modern MFA + TAP` (WHfB, FIDO2, CBA, TAP) and the partner's technicians don't have any of those registered in their home tenant, they are blocked — even though home tenant MFA is technically "trusted."
+>
+> **3. The "always trusted" rule only applies to native Entra MFA claims.**
+> Cross-tenant trust evaluates whether the home tenant MFA claim satisfies the resource tenant's CA policy. The claim must come from a native Entra method. Custom Controls, federated MFA, and non-native methods do not produce claims that can be evaluated cross-tenant.
+
+> ✅ **Recommended approach for MSP/CSP tenants:**
+> Exclude `serviceProvider` from CA policies that enforce authentication strength or complex grant controls. Per the GDAP FAQ on MS Learn: *"Customers can exclude CSPs from conditional access policy so that partners can transition to GDAP without getting blocked."* Use `excludeGuestsOrExternalUsers` with `guestOrExternalUserTypes: "serviceProvider"` scoped to your known partner tenant IDs — not `AllExternalTenants` — to maintain least-privilege exclusions.
+
+> ℹ️ GDAP home tenant MFA is auto-trusted by Microsoft — no cross-tenant trust settings configuration is required. But auto-trust only applies to native Entra MFA methods. It does not bypass CA policy grant control requirements.
 
 ---
 
@@ -197,8 +212,10 @@ Per Microsoft Learn (Authentication strength MFA methods for external users):
 | B2B collaboration member users | ✅ Yes | ✅ Yes | Policy 1 |
 | B2B direct connect users | ✅ Yes (home tenant) | ✅ Yes | Policy 1 |
 | Local guest users | ✅ Yes (full set) | ✅ Yes | Policy 1 |
-| Service provider users | ✅ Yes (home tenant) | ✅ Yes | Policy 1 |
+| Service provider users | ⚠️ Only if partner uses native Entra MFA — DUO/Custom Controls will block | ✅ Yes | Policy 1 or **exclude entirely** if partners use DUO/EAM |
 | Other external users | ❌ NOT supported | ✅ Yes | Policy 2 |
+
+> ⚠️ **MSP/CSP tenants:** If any of your GDAP partners use DUO, RSA, Silverfort, or any other Custom Control / External Authentication Method in their home tenant, those users will be blocked by CA policies regardless of grant control type. Custom Controls are not supported for cross-tenant trust evaluation (MS Learn verified). The safest approach is to exclude `serviceProvider` from CA policies entirely and scope the exclusion to specific known partner tenant IDs.
 
 ---
 
