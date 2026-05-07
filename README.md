@@ -25,6 +25,12 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ## Recent Changes
 
+### v1.11.0 — Persona × Control Coverage (May 7, 2026)
+- **New Personas tab** — scores the tenant against the required-control matrix per Zero Trust persona (Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, M365ServiceAccounts)
+- Detects 10 controls per persona — MFA, phishing-resistant MFA, compliant device, sign-in/user risk, sign-in frequency, legacy auth block, country block, non-corp network block, high-risk app block
+- Each control resolves to **Present** / **Report-only** / **Missing** with the actual policies that satisfy it
+- Critical gaps (Admins missing MFA, Internals missing user-risk, etc.) surface in the Findings tab and exports
+
 ### v1.10.0 — Zero Trust Persona Framework (May 7, 2026)
 - **Persona-based intelligence on the Templates tab**, aligned with [Claus Jespersen's Microsoft framework](https://github.com/microsoft/ConditionalAccessforZeroTrustResources)
 - **One-click load** of community Zero Trust baselines: [Kenneth van Surksum](https://github.com/kennethvs/cabaseline202510), [Joey Verlinden](https://github.com/j0eyv/ConditionalAccessBaseline), [Claus Jespersen](https://github.com/microsoft/ConditionalAccessforZeroTrustResources)
@@ -38,17 +44,6 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 - Auto-detects JSON files, converts Graph API policy exports into templates with auto-generated fingerprints
 - Break-glass severity fix: disabled policies → **low**, report-only → **medium**
 - Entra Connect version corrected to v2.5.76.0; DirSync check now links to [version history](https://learn.microsoft.com/entra/identity/hybrid/connect/reference-connect-version-history)
-
-### v1.8.0 — Per-Policy Break-Glass Annotations (April 11, 2026)
-- **Every CA policy now shows break-glass status** — info/high/medium/low annotations on ALL policies, not just 7 critical types
-- **Tenant-wide summary shows total coverage** — "X of Y policies" with full breakdown (total, user-targeting, with/without counts)
-- Severity-aware: block+allUsers+allApps = high, MFA/compliance+allUsers = medium, others = low, disabled/report-only = info
-- Extracted reusable `identifyBreakGlass()` helper shared by per-policy and tenant-wide checks
-
-### v1.7.0 — Resource Exclusion Enforcement & License Fix (April 11, 2026)
-- **Resource Exclusion Bypass Check updated** for Microsoft's March–June 2026 enforcement rollout
-- **New tenant-wide "Low-Privilege Scope Enforcement" check** — detects "All resources" policies affected by the rollout
-- **Fixed Workload Identity Premium license detection** — now checks both `AAD_WRKLDID_P1` and `AAD_WRKLDID_P2`
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 

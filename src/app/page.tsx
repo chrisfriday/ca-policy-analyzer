@@ -14,12 +14,14 @@ import { TemplatesView } from "@/components/templates-view";
 import { CISView } from "@/components/cis-view";
 import { ExclusionsView } from "@/components/exclusions-view";
 import { LocationsView } from "@/components/locations-view";
+import { PersonaView } from "@/components/persona-view";
 import { analyzeNamedLocations, LocationAnalysisResult } from "@/lib/location-analyzer";
+import { analyzePersonaCoverage, PersonaCoverageResult } from "@/lib/persona-coverage";
 import { exportToExcel, exportToPowerPoint, loadDefaultLogo } from "@/lib/export-utils";
-import { Shield, Loader2, Play, Download, RefreshCw, LayoutDashboard, FileText, AlertTriangle, Layers, CheckSquare, BookOpen, FileSpreadsheet, Presentation, MapPin } from "lucide-react";
+import { Shield, Loader2, Play, Download, RefreshCw, LayoutDashboard, FileText, AlertTriangle, Layers, CheckSquare, BookOpen, FileSpreadsheet, Presentation, MapPin, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ViewTab = "dashboard" | "policies" | "findings" | "templates" | "cis" | "locations" | "ms-learn";
+type ViewTab = "dashboard" | "policies" | "findings" | "templates" | "cis" | "locations" | "personas" | "ms-learn";
 
 export default function Home() {
   const isAuthenticated = useIsAuthenticated();
@@ -32,6 +34,7 @@ export default function Home() {
   const [templateResult, setTemplateResult] = useState<TemplateAnalysisResult | null>(null);
   const [customRepoDisplay, setCustomRepoDisplay] = useState<string | null>(null);
   const [cisResult, setCisResult] = useState<CISAlignmentResult | null>(null);
+  const [personaResult, setPersonaResult] = useState<PersonaCoverageResult | null>(null);
   const [compositeScore, setCompositeScore] = useState<CompositeScoreResult | null>(null);
   const [locationResult, setLocationResult] = useState<LocationAnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>("dashboard");
@@ -98,6 +101,19 @@ export default function Home() {
       setProgress("Analyzing named locations…");
       const locResult = analyzeNamedLocations(ctx);
       setLocationResult(locResult);
+
+      setProgress("Scoring persona × control coverage…");
+      const persona = analyzePersonaCoverage(ctx);
+      setPersonaResult(persona);
+      // Merge persona-coverage findings into the main findings list so they
+      // surface in the Findings tab and exports without double-counting.
+      if (persona.findings.length > 0) {
+        const merged: AnalysisResult = {
+          ...analysisResult,
+          findings: [...analysisResult.findings, ...persona.findings],
+        };
+        setResult(merged);
+      }
 
       setProgress("Computing security posture score…");
       const composite = calculateCompositeScore(analysisResult, cis, templates);
@@ -220,6 +236,7 @@ export default function Home() {
     { key: "templates" as const, label: "Templates", icon: Layers },
     { key: "cis" as const, label: "CIS", icon: CheckSquare },
     { key: "locations" as const, label: "Locations", icon: MapPin },
+    { key: "personas" as const, label: "Personas", icon: Users },
     { key: "ms-learn" as const, label: "MS Learn", icon: BookOpen },
   ];
 
@@ -340,6 +357,9 @@ export default function Home() {
       )}
       {activeTab === "locations" && locationResult && (
         <LocationsView result={locationResult} />
+      )}
+      {activeTab === "personas" && personaResult && (
+        <PersonaView result={personaResult} />
       )}
       {activeTab === "ms-learn" && result && (
         <ExclusionsView findings={result.exclusionFindings} />

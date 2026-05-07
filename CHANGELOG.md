@@ -5,6 +5,20 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-05-07
+
+### Added
+- **Zero Trust Persona Framework — Phase 2: Persona × Control Coverage** — new top-level **Personas** tab that scores the tenant against the required-control matrix defined in [src/lib/personas.ts](src/lib/personas.ts):
+  - New analyzer [src/lib/persona-coverage.ts](src/lib/persona-coverage.ts) buckets every CA policy into one or more personas (by displayName, plus structural fallbacks: `includeUsers=All` → Global+Internals, `includeRoles` populated → Admins, `includeGuestsOrExternalUsers` → Externals)
+  - Detects 10 required controls per persona — `block-legacy-auth`, `require-mfa`, `require-compliant-device`, `sign-in-risk`, `user-risk`, `session-sif`, `block-countries`, `phishing-resistant-mfa`, `block-non-corp-network`, `block-high-risk-apps`
+  - Each control gets a status of **Present** (enabled policy enforces it), **Report-only** (only enforced in report-only mode), **Missing**, or **N/A**
+  - Per-persona score card with overall coverage ring, expandable control breakdown, and a list of every policy assigned to that persona (with state)
+  - **Critical gaps surface as findings** in the Findings tab and exports — Admins missing MFA → critical; Internals missing user-risk → medium; etc. Severity is tuned per persona × control pair
+- New view component [src/components/persona-view.tsx](src/components/persona-view.tsx) with persona cards, status badges, and expandable per-control evidence (which policies enforce / report-only enforce each control)
+
+### Changed
+- `analyzeAllPolicies` results now include the persona-coverage findings merged into `result.findings` so every existing surface (Findings list, Excel/PowerPoint export, dashboard counts) sees the new gap detections without duplicate analyzer runs
+
 ## [1.10.2] - 2026-05-07
 
 ### Fixed
