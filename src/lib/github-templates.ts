@@ -392,7 +392,10 @@ export async function fetchGitHubTemplates(
         const resp = await fetch(file.download_url);
         if (!resp.ok)
           throw new Error(`Failed to fetch ${file.name}: ${resp.status}`);
-        const text = await resp.text();
+        let text = await resp.text();
+        // Strip UTF-8 BOM (PowerShell ConvertTo-Json | Out-File on Windows
+        // writes files with a BOM, which causes JSON.parse to throw).
+        if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
         return { name: file.name, data: JSON.parse(text) };
       })
     );
@@ -400,8 +403,16 @@ export async function fetchGitHubTemplates(
     for (const result of results) {
       if (result.status === "fulfilled") {
         const { data } = result.value;
-        // Check if it looks like a CA policy (has conditions.users or conditions.applications)
-        if (data.conditions && (data.conditions.users || data.conditions.applications)) {
+        // Accept anything that looks like a CA policy export. Some baselines
+        // (e.g. Joey Verlinden) export conditions blocks with users/applications
+        // set to null or empty objects — only require displayName + conditions.
+        const looksLikeCAPolicy =
+          data &&
+          typeof data === "object" &&
+          typeof data.displayName === "string" &&
+          data.conditions &&
+          typeof data.conditions === "object";
+        if (looksLikeCAPolicy) {
           const template = policyToTemplate(data, templates.length);
           if (template) templates.push(template);
         }

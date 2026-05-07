@@ -5,6 +5,16 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-05-07
+
+### Fixed
+- **Joey Verlinden baseline now loads correctly** — github-templates fetcher now strips UTF-8 BOM (PowerShell `ConvertTo-Json | Out-File` writes a leading BOM that broke `JSON.parse`)
+- **Broader CA policy validation** — accept any export with `displayName` + `conditions` object (previously required non-null `conditions.users` or `conditions.applications`, which rejected baselines with minimal condition blocks)
+- Joey Verlinden preset URL now deep-links to [`Config/ConditionalAccess`](https://github.com/j0eyv/ConditionalAccessBaseline/tree/main/Config/ConditionalAccess)
+
+### Changed
+- **Removed Claus Jespersen preset button** — repo is the canonical Zero Trust framework reference but is no longer actively maintained as a deployable baseline. Credited as a guidance reference in [docs/zero-trust-persona-framework.md](docs/zero-trust-persona-framework.md) only.
+
 ## [1.10.0] - 2026-05-07
 
 ### Added

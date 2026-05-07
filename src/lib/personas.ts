@@ -291,19 +291,27 @@ export const KNOWN_BASELINES: KnownBaseline[] = [
     id: "joeyv",
     label: "Joey Verlinden — Conditional Access Baseline",
     author: "Joey Verlinden (MVP)",
-    repoUrl: "https://github.com/j0eyv/ConditionalAccessBaseline",
+    repoUrl:
+      "https://github.com/j0eyv/ConditionalAccessBaseline/tree/main/Config/ConditionalAccess",
     description:
       "Persona-based baseline aligned with Microsoft's Zero Trust guidance and Claus Jespersen's framework.",
     source: "joey",
   },
+];
+
+/**
+ * Reference-only sources (not loaded as baselines, credited in docs).
+ * Claus Jespersen's repo is the canonical framework reference but is no longer
+ * actively maintained as a deployable baseline — cite for guidance only.
+ */
+export const REFERENCE_SOURCES = [
   {
     id: "clajes",
-    label: "Claus Jespersen — Microsoft Zero Trust Reference",
+    label: "Claus Jespersen — Microsoft Zero Trust framework (reference)",
     author: "Claus Jespersen (Microsoft)",
     repoUrl:
       "https://github.com/microsoft/ConditionalAccessforZeroTrustResources",
     description:
-      "Original Microsoft persona framework reference and source baseline. Includes presentations and design guidance.",
-    source: "claus",
+      "Original Microsoft persona framework reference. Cite for guidance — not actively maintained as a deployable baseline.",
   },
-];
+] as const;
