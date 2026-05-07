@@ -25,6 +25,13 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ## Recent Changes
 
+### v1.10.0 — Zero Trust Persona Framework (May 7, 2026)
+- **Persona-based intelligence on the Templates tab**, aligned with [Claus Jespersen's Microsoft framework](https://github.com/microsoft/ConditionalAccessforZeroTrustResources)
+- **One-click load** of community Zero Trust baselines: [Kenneth van Surksum](https://github.com/kennethvs/cabaseline202510), [Joey Verlinden](https://github.com/j0eyv/ConditionalAccessBaseline), [Claus Jespersen](https://github.com/microsoft/ConditionalAccessforZeroTrustResources)
+- **Persona detection** from policy displayName: Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, Microsoft365ServiceAccounts
+- **Persona-based grouping** in the Templates view when persona naming is detected (falls back to CAD/CAL/CAP prefix grouping otherwise)
+- New reference doc: [docs/zero-trust-persona-framework.md](docs/zero-trust-persona-framework.md)
+
 ### v1.9.0 — Custom GitHub Template Comparison (April 17, 2026)
 - **Compare against any public GitHub CA policy repo** — new "Compare Custom Repo" button on the Templates tab
 - Accepts full GitHub URLs, branch/path deep links, or `owner/repo` shorthand

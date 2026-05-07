@@ -5,6 +5,23 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-05-07
+
+### Added
+- **Zero Trust Persona Framework (Phase 1)** — Adds persona-based intelligence to the Templates tab, aligned with [Claus Jespersen's Microsoft framework](https://github.com/microsoft/ConditionalAccessforZeroTrustResources) and the [Welkasworld design guide](https://www.welkasworld.com/post/conditional-access-naming-conventions-personas-design-process)
+  - **Persona detection** from policy `displayName`: Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, Microsoft365ServiceAccounts
+  - **One-click baseline loading** — Three preset buttons in the GitHub repo input load community Zero Trust baselines:
+    - Kenneth van Surksum — [`cabaseline202510`](https://github.com/kennethvs/cabaseline202510)
+    - Joey Verlinden — [`ConditionalAccessBaseline`](https://github.com/j0eyv/ConditionalAccessBaseline)
+    - Claus Jespersen — [`ConditionalAccessforZeroTrustResources`](https://github.com/microsoft/ConditionalAccessforZeroTrustResources)
+  - **Persona-based grouping** — When a loaded repo uses persona naming (Admins, Internals, Externals, Workload, etc.), policies group by persona automatically with persona descriptions and expected control hints. Falls back to existing CAD/CAL/CAP prefix grouping otherwise.
+  - **New reference doc** — [docs/zero-trust-persona-framework.md](docs/zero-trust-persona-framework.md) consolidating persona taxonomy, naming conventions, expected control bundle per persona, and references to Welkasworld, Claus Jespersen, and community baselines.
+
+### Roadmap
+- **Phase 2** — Persona × required-control coverage matrix as a tenant-wide analyzer finding
+- **Phase 3** — Zero Trust pillar scorecard (Verify Explicitly / Least Privilege / Assume Breach) on the dashboard
+- **Phase 4** — Gap analysis comparing tenant against a chosen baseline (Kenneth / Joey / Claus)
+
 ## [1.9.0] - 2026-04-17
 
 ### Added

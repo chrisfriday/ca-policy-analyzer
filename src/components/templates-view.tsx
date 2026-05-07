@@ -11,6 +11,13 @@ import {
   CATEGORY_META,
   TemplatePriority,
 } from "@/data/policy-templates";
+import {
+  Persona,
+  PERSONA_META,
+  PERSONA_ORDER,
+  detectPersona,
+  KNOWN_BASELINES,
+} from "@/lib/personas";
 import { ScoreRing, Card } from "./ui-primitives";
 import {
   CheckCircle2,
@@ -303,6 +310,88 @@ function groupByPrefix(matches: TemplateMatch[]): { prefix: string; matches: Tem
     }
   }
   return groups;
+}
+
+// ─── Persona Grouping (Zero Trust framework) ───────────────────────────────────
+
+/** Group matches by detected Zero Trust persona (Claus Jespersen framework) */
+function groupByPersona(
+  matches: TemplateMatch[]
+): { persona: Persona; matches: TemplateMatch[] }[] {
+  const sorted = sortByPrefix(matches);
+  const buckets = new Map<Persona, TemplateMatch[]>();
+  for (const m of sorted) {
+    const persona = detectPersona(m.template.displayName);
+    const arr = buckets.get(persona) ?? [];
+    arr.push(m);
+    buckets.set(persona, arr);
+  }
+  return PERSONA_ORDER.filter((p) => buckets.has(p)).map((persona) => ({
+    persona,
+    matches: buckets.get(persona)!,
+  }));
+}
+
+/** True when at least one match maps to a non-unknown persona. */
+function hasPersonaSignal(matches: TemplateMatch[]): boolean {
+  return matches.some(
+    (m) => detectPersona(m.template.displayName) !== "unknown"
+  );
+}
+
+function PersonaGroupSection({
+  persona,
+  matches,
+}: {
+  persona: Persona;
+  matches: TemplateMatch[];
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const meta = PERSONA_META[persona];
+  const present = matches.filter((m) => m.status === "present").length;
+  const partial = matches.filter((m) => m.status === "partial").length;
+  const missing = matches.filter((m) => m.status === "missing").length;
+  const na = matches.filter((m) => m.status === "not-applicable").length;
+  const applicable = matches.length - na;
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="flex w-full items-center justify-between"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{meta.emoji}</span>
+          <h3 className="text-base font-semibold text-white">{meta.label}</h3>
+          <span className="text-xs text-gray-500">
+            {present}/{applicable} present{na > 0 ? ` · ${na} N/A` : ""}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1.5 text-xs">
+            {present > 0 && <span className="text-emerald-400">{present}✓</span>}
+            {partial > 0 && <span className="text-amber-400">{partial}~</span>}
+            {missing > 0 && <span className="text-red-400">{missing}✗</span>}
+            {na > 0 && <span className="text-gray-500">{na} N/A</span>}
+          </div>
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4 text-gray-500" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-gray-500" />
+          )}
+        </div>
+      </button>
+      <p className="text-xs text-gray-500 -mt-1">{meta.description}</p>
+
+      {!collapsed && (
+        <div className="space-y-2">
+          {matches.map((match) => (
+            <TemplateCard key={match.template.id} match={match} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PrefixGroupSection({
@@ -617,7 +706,55 @@ export function TemplatesView({
 
         {/* GitHub URL Input */}
         {showGitHubInput && (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            {/* Known baseline presets (Zero Trust persona framework) */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-400">
+                Zero Trust persona baselines (one-click load):
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {KNOWN_BASELINES.map((baseline) => (
+                  <button
+                    key={baseline.id}
+                    onClick={async () => {
+                      if (!onLoadGitHub || loading) return;
+                      setLoading(true);
+                      setLoadError(null);
+                      const error = await onLoadGitHub(baseline.repoUrl);
+                      setLoading(false);
+                      if (error) setLoadError(error);
+                      else {
+                        setShowGitHubInput(false);
+                        setGitHubUrl("");
+                      }
+                    }}
+                    disabled={loading}
+                    title={`${baseline.author} — ${baseline.description}`}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs transition-colors",
+                      loading
+                        ? "text-gray-500 cursor-not-allowed"
+                        : "text-gray-200 hover:bg-gray-700 hover:border-gray-600"
+                    )}
+                  >
+                    <Github className="h-3.5 w-3.5" />
+                    {baseline.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-500">
+                Based on{" "}
+                <a
+                  href="https://learn.microsoft.com/entra/identity/conditional-access/plan-conditional-access"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 underline"
+                >
+                  Claus Jespersen&apos;s Zero Trust persona framework
+                </a>
+                . When the loaded repo uses persona naming (Admins, Internals, Externals, Workload, etc.), policies group by persona automatically.
+              </p>
+            </div>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -699,17 +836,28 @@ export function TemplatesView({
         ))}
       </div>
 
-      {/* Category / Prefix Sections */}
+      {/* Category / Prefix / Persona Sections */}
       <div className="space-y-8">
         {customRepoDisplay ? (
-          /* Custom repo: group by naming prefix (CAD, CAL, CAP…) */
-          groupByPrefix(filteredMatches).map((group) => (
-            <PrefixGroupSection
-              key={group.prefix}
-              prefix={group.prefix}
-              matches={group.matches}
-            />
-          ))
+          hasPersonaSignal(filteredMatches) ? (
+            /* Custom repo with persona-based naming: group by Zero Trust persona */
+            groupByPersona(filteredMatches).map((group) => (
+              <PersonaGroupSection
+                key={group.persona}
+                persona={group.persona}
+                matches={group.matches}
+              />
+            ))
+          ) : (
+            /* Otherwise group by naming prefix (CAD, CAL, CAP…) */
+            groupByPrefix(filteredMatches).map((group) => (
+              <PrefixGroupSection
+                key={group.prefix}
+                prefix={group.prefix}
+                matches={group.matches}
+              />
+            ))
+          )
         ) : (
           /* Built-in templates: group by category */
           categories.map((cat) => {
