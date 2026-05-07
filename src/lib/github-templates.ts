@@ -23,11 +23,121 @@ interface GitHubFile {
   type: "file" | "dir";
 }
 
+export interface BaselineBundle {
+  /** Policy-exclusion / break-glass / service-account groups (id → displayName). */
+  groups: Record<string, string>;
+  /** Named locations referenced by policies (id → displayName). */
+  namedLocations: Record<string, string>;
+  /** True if a MigrationTable.json was found at the bundle root. */
+  hasMigrationTable: boolean;
+}
+
 export interface GitHubTemplateResult {
   templates: PolicyTemplate[];
   repoUrl: string;
   repoDisplay: string; // "owner/repo"
+  /** Companion artifacts when the repo is a full restore bundle. */
+  bundle?: BaselineBundle;
   error?: string;
+}
+
+// ─── Decoding ────────────────────────────────────────────────────────────────
+
+/**
+ * Decode a fetched response body, sniffing the BOM to pick the right charset.
+ * PowerShell `ConvertTo-Json | Out-File` on Windows defaults to UTF-16 LE;
+ * other tools emit UTF-8 with or without a BOM. Always prefer the BOM over
+ * the HTTP content-type because raw.githubusercontent.com always advertises
+ * text/plain regardless of the actual encoding.
+ */
+function decodeBody(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  // UTF-16 LE: FF FE
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(bytes.subarray(2));
+  }
+  // UTF-16 BE: FE FF
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder("utf-16be").decode(bytes.subarray(2));
+  }
+  // UTF-8 BOM: EF BB BF
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xef &&
+    bytes[1] === 0xbb &&
+    bytes[2] === 0xbf
+  ) {
+    return new TextDecoder("utf-8").decode(bytes.subarray(3));
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+// ─── Classification ──────────────────────────────────────────────────────────
+
+type JsonKind =
+  | "capolicy"
+  | "group"
+  | "namedlocation"
+  | "migrationtable"
+  | "unknown";
+
+/**
+ * Classify a parsed JSON payload so bundle exports (Groups, NamedLocations,
+ * MigrationTable) don't get rejected as failed CA policies.
+ */
+function classifyJson(
+  data: unknown,
+  fileName: string,
+  filePath: string
+): JsonKind {
+  if (!data || typeof data !== "object") return "unknown";
+  const obj = data as Record<string, unknown>;
+
+  // MigrationTable: { TenantId, Objects: [{ DisplayName, Id, Type }] }
+  if (
+    /migrationtable/i.test(fileName) ||
+    (Array.isArray(obj.Objects) && typeof obj.TenantId === "string")
+  ) {
+    return "migrationtable";
+  }
+
+  const odataType = (obj["@odata.type"] as string | undefined) ?? "";
+  const odataContext = (obj["@odata.context"] as string | undefined) ?? "";
+  const lowerPath = filePath.toLowerCase();
+
+  // Named locations: country / IP / compliant-network
+  if (
+    /\/namedlocations(\/|$)/i.test(lowerPath) ||
+    /namedLocation/i.test(odataContext) ||
+    odataType.includes("NamedLocation") ||
+    Array.isArray(obj.countriesAndRegions) ||
+    Array.isArray(obj.ipRanges)
+  ) {
+    return "namedlocation";
+  }
+
+  // Groups: have groupTypes / mailEnabled / securityEnabled or live in Groups/
+  if (
+    /\/groups(\/|$)/i.test(lowerPath) ||
+    /\/groups\/\$entity/i.test(odataContext) ||
+    Array.isArray(obj.groupTypes) ||
+    typeof obj.mailEnabled === "boolean" ||
+    typeof obj.securityEnabled === "boolean"
+  ) {
+    // But only if it's clearly NOT a CA policy
+    if (!obj.conditions) return "group";
+  }
+
+  // CA policy: requires displayName + a conditions object
+  if (
+    typeof obj.displayName === "string" &&
+    obj.conditions &&
+    typeof obj.conditions === "object"
+  ) {
+    return "capolicy";
+  }
+
+  return "unknown";
 }
 
 // ─── Parse Repo URL ──────────────────────────────────────────────────────────
@@ -380,9 +490,16 @@ export async function fetchGitHubTemplates(
     };
   }
 
-  // Fetch and parse each JSON file (in parallel, batched)
+  // Fetch and parse each JSON file (in parallel, batched). Files may be CA
+  // policies, Group exports, NamedLocation exports, or a MigrationTable —
+  // classify each one and route to the appropriate bucket.
   const templates: PolicyTemplate[] = [];
   const errors: string[] = [];
+  const bundle: BaselineBundle = {
+    groups: {},
+    namedLocations: {},
+    hasMigrationTable: false,
+  };
 
   const BATCH_SIZE = 10;
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -392,30 +509,51 @@ export async function fetchGitHubTemplates(
         const resp = await fetch(file.download_url);
         if (!resp.ok)
           throw new Error(`Failed to fetch ${file.name}: ${resp.status}`);
-        let text = await resp.text();
-        // Strip UTF-8 BOM (PowerShell ConvertTo-Json | Out-File on Windows
-        // writes files with a BOM, which causes JSON.parse to throw).
-        if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-        return { name: file.name, data: JSON.parse(text) };
+        const buf = await resp.arrayBuffer();
+        const text = decodeBody(buf);
+        return {
+          name: file.name,
+          path: file.path,
+          data: JSON.parse(text) as unknown,
+        };
       })
     );
 
     for (const result of results) {
       if (result.status === "fulfilled") {
-        const { data } = result.value;
-        // Accept anything that looks like a CA policy export. Some baselines
-        // (e.g. Joey Verlinden) export conditions blocks with users/applications
-        // set to null or empty objects — only require displayName + conditions.
-        const looksLikeCAPolicy =
-          data &&
-          typeof data === "object" &&
-          typeof data.displayName === "string" &&
-          data.conditions &&
-          typeof data.conditions === "object";
-        if (looksLikeCAPolicy) {
-          const template = policyToTemplate(data, templates.length);
+        const { name, path: filePath, data } = result.value;
+        const kind = classifyJson(data, name, filePath);
+        if (kind === "capolicy") {
+          const template = policyToTemplate(
+            data as Record<string, unknown>,
+            templates.length
+          );
           if (template) templates.push(template);
+        } else if (kind === "group") {
+          const g = data as Record<string, unknown>;
+          const id = (g.id as string) ?? "";
+          const dn = (g.displayName as string) ?? name.replace(/\.json$/i, "");
+          if (id) bundle.groups[id] = dn;
+        } else if (kind === "namedlocation") {
+          const nl = data as Record<string, unknown>;
+          const id = (nl.id as string) ?? "";
+          const dn = (nl.displayName as string) ?? name.replace(/\.json$/i, "");
+          if (id) bundle.namedLocations[id] = dn;
+        } else if (kind === "migrationtable") {
+          bundle.hasMigrationTable = true;
+          // MigrationTable can also seed Group displayName lookups by Id.
+          const mt = data as Record<string, unknown>;
+          const objs = (mt.Objects as Array<Record<string, unknown>>) ?? [];
+          for (const o of objs) {
+            const id = (o.Id as string) ?? "";
+            const dn = (o.DisplayName as string) ?? "";
+            const type = (o.Type as string) ?? "";
+            if (id && dn && type === "Group" && !bundle.groups[id]) {
+              bundle.groups[id] = dn;
+            }
+          }
         }
+        // unknown → silently skipped (don't pollute the error list)
       } else {
         errors.push(result.reason?.message ?? "Unknown fetch error");
       }
@@ -431,13 +569,30 @@ export async function fetchGitHubTemplates(
     };
   }
 
+  const groupCount = Object.keys(bundle.groups).length;
+  const nlCount = Object.keys(bundle.namedLocations).length;
+  const hasBundle = groupCount > 0 || nlCount > 0 || bundle.hasMigrationTable;
+
+  // Build a friendly status string. When companion artifacts are present we
+  // surface them so the user knows the full restore bundle was understood.
+  let info: string | undefined;
+  if (hasBundle) {
+    const parts: string[] = [`${templates.length} policies`];
+    if (groupCount > 0) parts.push(`${groupCount} groups`);
+    if (nlCount > 0) parts.push(`${nlCount} named locations`);
+    if (bundle.hasMigrationTable) parts.push("migration table");
+    info = `Loaded ${parts.join(" + ")}.`;
+  }
+  if (errors.length > 0) {
+    const skipped = `${errors.length} file${errors.length === 1 ? "" : "s"} skipped`;
+    info = info ? `${info} (${skipped})` : `Loaded ${templates.length} templates (${skipped})`;
+  }
+
   return {
     templates,
     repoUrl,
     repoDisplay,
-    error:
-      errors.length > 0
-        ? `Loaded ${templates.length} templates (${errors.length} files skipped)`
-        : undefined,
+    bundle: hasBundle ? bundle : undefined,
+    error: info,
   };
 }

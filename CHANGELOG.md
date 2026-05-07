@@ -5,6 +5,21 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-05-07
+
+### Fixed
+- **Joey Verlinden baseline now actually loads (real fix)** — files were UTF-16 LE, not UTF-8 with BOM. The fetcher now reads response bodies as `ArrayBuffer` and sniffs the BOM to pick the right `TextDecoder` (UTF-16 LE / UTF-16 BE / UTF-8 with or without BOM). PowerShell `ConvertTo-Json | Out-File` on Windows defaults to UTF-16 LE, which produced mojibake when decoded as UTF-8.
+
+### Added
+- **Restore-bundle awareness** — the GitHub loader now recognizes the full DCToolbox-style export structure (CA policies + `Groups/` + `NamedLocations/` + `MigrationTable.json`):
+  - Each fetched JSON is classified as `capolicy`, `group`, `namedlocation`, `migrationtable`, or `unknown` based on file path, `@odata.type`, `@odata.context`, and shape — companion files no longer get reported as "invalid CA policy exports"
+  - Companion artifacts are collected into a `BaselineBundle` (group id → displayName, named-location id → displayName, migration-table presence) returned alongside the templates for future GUID-resolution work
+  - Status message now reports the full bundle, e.g. `Loaded 67 policies + 33 groups + 2 named locations + migration table.`
+- New exported types: `BaselineBundle`, extended `GitHubTemplateResult` with optional `bundle` field
+
+### Changed
+- **Joey Verlinden preset now points at [`Config/`](https://github.com/j0eyv/ConditionalAccessBaseline/tree/main/Config)** (parent folder) instead of `Config/ConditionalAccess` so the loader picks up the full restore bundle automatically
+
 ## [1.10.1] - 2026-05-07
 
 ### Fixed
