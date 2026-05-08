@@ -5,6 +5,16 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.6] - 2026-05-08
+
+### Fixed
+
+- **Persona detection — CamelCase tokens and `CA<nnn>` prefix mapping** — Joey Verlinden-style policy names like `CA300-ServiceAccounts-...`, `CA400-GuestUsers-...`, and `CA501-Agents-...` were landing in the *Unclassified* persona bucket. Two root causes:
+  1. The token regexes used `\b` word boundaries, which don't fire on CamelCase joins (e.g. `\bguests?\b` does NOT match `GuestUsers` because there is no word boundary between `t` and `U`). Replaced with explicit start/end boundaries that treat any non-alphanumeric character OR an uppercase letter following lowercase as a token break.
+  2. The token vocabulary was missing `ServiceAccounts` (Joey's CA300 series), `GuestUsers` (CA400 series), and `Agents` / `AIAgents` / `CopilotAgents` (CA500 series — Microsoft Entra Agent Identities are workload identities).
+- Added a numeric `CA<nnn>` prefix fallback that maps unknown-but-numbered baselines: `CA0xx → global`, `CA1xx → admins`, `CA2xx → internals`, `CA3xx → corpserviceaccounts`, `CA4xx → externals`, `CA5xx → workloadidentities`. Token matches still take precedence so explicit names always win.
+- Result: Joey's full baseline now classifies cleanly into the right persona buckets instead of falling through to *Unclassified*. Verified against `CA300-ServiceAccounts-...` → `corpserviceaccounts`, `CA400-GuestUsers-...` → `externals`, `CA501-Agents-...` → `workloadidentities`.
+
 ## [1.14.5] - 2026-05-08
 
 ### Changed

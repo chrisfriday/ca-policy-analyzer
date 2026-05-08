@@ -193,72 +193,146 @@ export const PERSONA_META: Record<Persona, PersonaMeta> = {
  * Token patterns that map to each persona. Order matters — more specific
  * patterns (e.g. "GuestAdmin") are tested before broader ones ("Guest").
  *
- * Match is case-insensitive, applied to the full displayName, and checks for
- * the token as a whole word (separated by ‐ – _ space or end of string).
+ * Match is case-insensitive. Tokens are bounded by `(?<=^|[^A-Za-z0-9])` /
+ * `(?=$|[^a-z0-9])` so they fire on hyphen / underscore / space separators
+ * AND on CamelCase boundaries (e.g. "GuestUsers" → matches "Guest", and
+ * "ServiceAccounts" → matches "ServiceAccounts").
  */
+const TB = "(?<=^|[^A-Za-z0-9])"; // token-start boundary (start, or non-alnum)
+const TE = "(?=$|[^a-z0-9])"; // token-end boundary (end, or uppercase/non-alnum → CamelCase aware)
+
 const PERSONA_PATTERNS: Array<{ persona: Persona; patterns: RegExp[] }> = [
   // Most specific first
   {
     persona: "microsoft365serviceaccounts",
     patterns: [
-      /\b(microsoft365serviceaccounts?|m365service|m365svc|directorysynchronization|aadc?onnect|entraconnect)\b/i,
+      new RegExp(
+        `${TB}(microsoft365serviceaccounts?|m365service|m365svc|directorysynchronization|aadc?onnect|entraconnect)${TE}`,
+        "i"
+      ),
     ],
   },
   {
     persona: "workloadidentities",
     patterns: [
-      /\b(workload[\s_-]?identit(?:y|ies)|workloadid|serviceprincipals?|managedidentit(?:y|ies))\b/i,
+      // Includes "Agents" (Microsoft Entra Agent Identities / AI agents are
+      // workload identities) and "ServicePrincipals" / "ManagedIdentities".
+      new RegExp(
+        `${TB}(workload[\\s_-]?identit(?:y|ies)|workloadid|serviceprincipals?|managedidentit(?:y|ies)|agents?|aiagents?|copilotagents?)${TE}`,
+        "i"
+      ),
     ],
   },
   {
     persona: "corpserviceaccounts",
     patterns: [
-      /\b(corp(?:orate)?serviceaccounts?|corpservice|corpsvc|svcaccounts?)\b/i,
+      // "ServiceAccounts" alone (Joey's CA300 series) maps here. The
+      // microsoft365serviceaccounts and workloadidentities matchers above are
+      // tested first, so they win when their more-specific tokens are present.
+      new RegExp(
+        `${TB}(corp(?:orate)?serviceaccounts?|corpservice|corpsvc|svcaccounts?|serviceaccounts?)${TE}`,
+        "i"
+      ),
     ],
   },
   {
     persona: "guestadmins",
     patterns: [
-      /\b(guestadmins?|externaladmins?|gdap|cspadmins?|partneradmins?)\b/i,
+      new RegExp(
+        `${TB}(guestadmins?|externaladmins?|gdap|cspadmins?|partneradmins?)${TE}`,
+        "i"
+      ),
     ],
   },
   {
     persona: "admins",
     patterns: [
-      /\b(admins?|privilegedusers?|privrole|priv[\s_-]?roles?)\b/i,
+      new RegExp(
+        `${TB}(admins?|privilegedusers?|privrole|priv[\\s_-]?roles?)${TE}`,
+        "i"
+      ),
     ],
   },
   {
     persona: "developers",
-    patterns: [/\b(developers?|devs?|engineers?)\b/i],
+    patterns: [new RegExp(`${TB}(developers?|devs?|engineers?)${TE}`, "i")],
   },
   {
     persona: "externals",
     patterns: [
-      /\b(externals?|guests?|b2b|external[\s_-]?users?|externalcollabs?)\b/i,
+      // "GuestUsers" (Joey's CA400 series) and "Externals" / "B2B" all map here.
+      new RegExp(
+        `${TB}(externals?|guests?|guestusers?|b2b|external[\\s_-]?users?|externalcollabs?)${TE}`,
+        "i"
+      ),
     ],
   },
   {
     persona: "internals",
     patterns: [
-      /\b(internals?|employees?|members?|staff|users?[\s_-]?internal)\b/i,
+      new RegExp(
+        `${TB}(internals?|employees?|members?|staff|users?[\\s_-]?internal)${TE}`,
+        "i"
+      ),
     ],
   },
   {
     persona: "global",
-    patterns: [/\b(global|alluser|tenantwide|baseline|allapps?|allcloudapps?)\b/i],
+    patterns: [
+      new RegExp(
+        `${TB}(global|alluser|tenantwide|baseline|allapps?|allcloudapps?)${TE}`,
+        "i"
+      ),
+    ],
   },
 ];
 
 /**
+ * Numeric "CA<number>" prefix → persona fallback for baselines (e.g. Joey's)
+ * that follow a strict numeric block convention. Only consulted when no token
+ * match was found, so explicit naming always wins.
+ *
+ *   CA0xx / CA00x → Global   (tenant-wide baseline policies)
+ *   CA1xx         → Admins   (privileged role policies)
+ *   CA2xx         → Internals (employee/member policies)
+ *   CA3xx         → Corp Service Accounts
+ *   CA4xx         → Externals / Guests
+ *   CA5xx         → Workload Identities / Agents
+ */
+const CA_PREFIX_BLOCKS: Array<{ persona: Persona; range: [number, number] }> = [
+  { persona: "global", range: [0, 99] },
+  { persona: "admins", range: [100, 199] },
+  { persona: "internals", range: [200, 299] },
+  { persona: "corpserviceaccounts", range: [300, 399] },
+  { persona: "externals", range: [400, 499] },
+  { persona: "workloadidentities", range: [500, 599] },
+];
+
+function detectPersonaByCaPrefix(displayName: string): Persona | null {
+  // Match a leading "CA" followed by 2-4 digits, optionally separated from the
+  // rest by hyphen/underscore/space. e.g. "CA300-ServiceAccounts-...".
+  const m = /^[\s_-]*CA0*(\d{1,4})\b/i.exec(displayName);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  if (Number.isNaN(n)) return null;
+  for (const block of CA_PREFIX_BLOCKS) {
+    if (n >= block.range[0] && n <= block.range[1]) return block.persona;
+  }
+  return null;
+}
+
+/**
  * Detect the persona for a given policy displayName by inspecting common
- * naming-convention tokens. Returns "unknown" if no match.
+ * naming-convention tokens. Falls back to a numeric "CA<nnn>" prefix block
+ * mapping (Joey's framework). Returns "unknown" if neither matches.
  */
 export function detectPersona(displayName: string): Persona {
   if (!displayName) return "unknown";
   for (const { persona, patterns } of PERSONA_PATTERNS) {
     if (patterns.some((p) => p.test(displayName))) return persona;
   }
+  const byPrefix = detectPersonaByCaPrefix(displayName);
+  if (byPrefix) return byPrefix;
   return "unknown";
 }
 

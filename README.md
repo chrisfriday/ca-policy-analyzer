@@ -27,6 +27,12 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 > Only the **5 most recent releases** are summarized here. Full version history lives in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.14.6 — Persona detection: CamelCase + `CA<nnn>` prefix mapping (May 8, 2026)
+- Joey Verlinden-style policy names like `CA300-ServiceAccounts-...`, `CA400-GuestUsers-...`, and `CA501-Agents-...` were landing in the *Unclassified* bucket on the Personas tab.
+- **Root cause 1**: token regexes used `\b` word boundaries, which don't fire on CamelCase joins (`\bguests?\b` does NOT match `GuestUsers` because there's no word boundary between `t` and `U`). Replaced with explicit start/end boundaries that treat any non-alphanumeric character OR an uppercase letter following lowercase as a token break.
+- **Root cause 2**: the token vocabulary was missing `ServiceAccounts`, `GuestUsers`, and `Agents` / `AIAgents` / `CopilotAgents` (Microsoft Entra Agent Identities → workload identities).
+- Added a numeric `CA<nnn>` prefix fallback for baselines that follow the strict numeric block convention: `CA0xx → global`, `CA1xx → admins`, `CA2xx → internals`, `CA3xx → corpserviceaccounts`, `CA4xx → externals`, `CA5xx → workloadidentities`. Token matches still take precedence so explicit names always win.
+
 ### v1.14.5 — Phishing-resistant detection unified across all surfaces (May 8, 2026)
 - Extracted phishing-resistant detection into a single shared helper [src/lib/phishing-resistant.ts](src/lib/phishing-resistant.ts) so the **Zero Trust scorecard**, the **Persona × Control matrix**, and the per-policy analyzer findings (**Guest Authentication Strength**, **Protected Actions**) all use the same authoritative implementation.
 - Two additional displayName-only checks were converted to use the shared helper:
@@ -49,12 +55,7 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 - Detection now resolves the policy's `authenticationStrength.id` against `TenantContext.authStrengthPolicies` and inspects `allowedCombinations` directly, plus matches the well-known built-in **Phishing-resistant MFA** strength id `00000000-0000-0000-0000-000000000004`. Tokens treated as phishing-resistant: `fido2`, `windowsHelloForBusiness`, `x509CertificateMultiFactor`, `x509CertificateSingleFactor`, `deviceBoundPasskey`, `hardwareOath`.
 - Evidence string now names the matching strength so the operator can verify what the engine picked.
 
-### v1.14.1 — Deployment plan now ships as a ZIP bundle (May 8, 2026)
-- **"Download deployment bundle"** on the Baseline Gap tab now produces a ZIP with: a Zero Trust criticality-ordered `README.md` (Critical → High → Medium → Low, personas in canonical order within each tier), the original `deployment-plan.json` manifest, and one Graph-ready JSON file per policy at `policies/<persona>/<template>.json`.
-- The bundle README bakes in **four auto-import recipes** (Microsoft Graph PowerShell SDK, DCToolbox, `Invoke-MgGraphRequest`, Bash + curl + jq) so the operator can pick the workflow that matches their environment.
-- Added `jszip` for in-browser ZIP creation; new `downloadDeploymentBundle()` helper in [src/lib/deployment-plan.ts](src/lib/deployment-plan.ts).
-
-See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.14.0 (Deployment Plans + Persona-aware PPTX), v1.13.0 (Baseline Gap Analysis), v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage), v1.10.0 (Zero Trust Persona Framework) and earlier.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.14.1 (deployment ZIP bundle), v1.14.0 (Deployment Plans + Persona-aware PPTX), v1.13.0 (Baseline Gap Analysis), v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage) and earlier.
 
 ---
 
