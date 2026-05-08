@@ -5,6 +5,16 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.3] - 2026-05-08
+
+### Fixed
+
+- **Tenant-wide MFA Coverage finding — report-only awareness** — the *"No policy requires MFA for All Users"* finding under `checkTenantWideGaps()` previously fired as **critical** whenever no `state === "enabled"` policy targeted All Users with MFA, even when a fully-formed **report-only** (`enabledForReportingButNotEnforced`) policy already covered the case. Operators with policies like `IAC - GLOBAL - GRANT - MFA - AllUsers` running in report-only mode were getting a misleading critical finding that read *"No enabled policy was found..."*.
+  - Check now scans both `enabled` and `enabledForReportingButNotEnforced` states.
+  - When only a report-only policy covers MFA-for-All-Users, the finding is rewritten as **"MFA for All Users exists but is Report-only"**, severity is downgraded **critical → medium**, the finding now references the actual policy id and name (instead of `tenant-wide`), and the recommendation guides the operator to promote after 7–14 days of telemetry observation.
+  - The original critical finding still fires when neither enabled nor report-only coverage exists.
+- Helper `isMfaForAll(policy)` extracted in [src/lib/analyzer.ts](src/lib/analyzer.ts) so the check is reused for both the enabled and report-only scans.
+
 ## [1.14.2] - 2026-05-08
 
 ### Fixed

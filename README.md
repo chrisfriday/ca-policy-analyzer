@@ -14,7 +14,7 @@
 1. Click **Connect Tenant**
 2. Sign in with your Entra ID credentials
 3. Click **Run Analysis**
-4. Explore the six analysis tabs: Dashboard, Policies, Findings, Templates, CIS, and MS Learn
+4. Explore the nine analysis tabs: Dashboard, Policies, Findings, Templates, Baseline Gap, CIS, Locations, Personas, and MS Learn
 5. Click **Export JSON** to download the full analysis results
 
 The app runs **100% in your browser** — your data never leaves your machine. It connects directly to Microsoft Graph using your own credentials (delegated permissions).
@@ -26,6 +26,11 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 ## Recent Changes
 
 > Only the **5 most recent releases** are summarized here. Full version history lives in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.14.3 — Report-only-aware MFA-for-all-users finding (May 8, 2026)
+- **Tenant-wide MFA Coverage check** — previously this finding fired as *critical* ("No policy requires MFA for All Users") whenever no **enabled** policy targeted All Users with MFA, even if a fully-formed **report-only** policy already covered the case. The message read "No enabled policy was found..." which felt wrong to operators who *did* have such a policy in report-only mode.
+- The check is now report-only aware: when a report-only policy covers MFA for All Users, the finding is downgraded from **critical → medium**, retitled "**MFA for All Users exists but is Report-only**", and references the actual policy id/name. Recommendation now reads *"After observing report-only telemetry for 7–14 days with no unexpected blocks, switch this policy to On."*
+- Only fires as critical when **neither enabled nor report-only** coverage exists.
 
 ### v1.14.2 — Phishing-resistant MFA detection fix (May 8, 2026)
 - **Zero Trust scorecard** — the *Verify Explicitly → Phishing-resistant MFA in use* signal previously matched only the authentication-strength **displayName** with a regex. Custom strengths like `Modern MFA + TAP` whose `allowedCombinations` *contain* FIDO2 / Windows Hello for Business / x509 certificate MFA were being missed.
@@ -48,13 +53,7 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 - Coverage score 0–100 = `(present + 0.5 × partial) / applicable_templates`
 - Toggleable filters, expandable per-entry evidence (closest tenant policy name + concrete differences), severity badges driven by template priority
 
-### v1.12.0 — Zero Trust Scorecard (May 8, 2026)
-- **New Dashboard widget** scoring the tenant against [Microsoft's three Zero Trust principles](https://learn.microsoft.com/security/zero-trust/zero-trust-overview): **Verify Explicitly**, **Use Least Privilege**, **Assume Breach**
-- 15 weighted signals (5 per pillar) rolled up from existing analyzer + persona-coverage evidence — no extra Graph calls, no double-counting
-- Each pillar shows a 0–100 score, color-coded progress bar, and click-to-expand breakdown of every signal that fed it (with weight, status, and one-line evidence)
-- Renders at the top of the Dashboard so posture against the principles is the first thing visible after analysis
-
-See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.11.0 (Persona × Control Coverage), v1.10.0 (Zero Trust Persona Framework), v1.9.0 (Custom GitHub Template Comparison) and earlier.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage), v1.10.0 (Zero Trust Persona Framework), v1.9.0 (Custom GitHub Template Comparison) and earlier.
 
 ---
 
@@ -233,25 +232,31 @@ Overall Score:         79 / 100  → Grade: C
 
 ## Interface
 
-The app has six tabs accessible after running an analysis:
+The app has nine tabs accessible after running an analysis:
 
 | Tab | What It Shows |
 |---|---|
-| **Dashboard** | Security posture score (0–100), severity breakdown, risk category distribution, and at-a-glance stats |
-| **Policies** | Every CA policy visualized as a flow card: Users → Conditions → Apps → Grant/Session Controls |
-| **Findings** | All detected issues ranked by severity (Critical → Info) with affected policies and remediation guidance |
-| **Templates** | 39 best-practice policy templates compared against your tenant — shows matched, partial, and missing policies including Workload Identity policies. **One-click load** of two persona-aligned baselines (Kenneth van Surksum 2025.10, Joey Verlinden Conditional Access Baseline) or compare against any public GitHub repo via URL / `owner/repo` shorthand |
-| **CIS** | CIS Microsoft 365 Foundations Benchmark v6.0.0 alignment — 18 controls across sections 5.3 (Conditional Access) and 5.4 (Identity Protection & Device Controls) |
-| **MS Learn** | Documented exclusion checks sourced from Microsoft Learn — flags policies missing required exclusions for token protection, Surface Hub, Teams Rooms, break-glass, CAE, and more |
+| **Dashboard** | **Zero Trust Scorecard** (Verify Explicitly / Use Least Privilege / Assume Breach — 15 weighted signals across 3 pillars), composite security posture score (0–100), severity breakdown, risk category distribution, and at-a-glance stats |
+| **Policies** | Every CA policy visualized as a flow card: Users → Conditions → Apps → Grant/Session Controls. Search, sort by **Most Findings / Name / State**, and expand any policy to see its findings inline |
+| **Findings** | All detected issues grouped by category and ranked by severity (Critical → Info) with affected policies and remediation guidance. Filter chips for All / Critical / High / Medium / Low / Info |
+| **Templates** | 39 best-practice policy templates compared against your tenant. **One-click load** of two persona-aligned Zero Trust baselines (Kenneth van Surksum 2025.10, Joey Verlinden Conditional Access Baseline including the full DCToolbox Config/ restore bundle) or compare against any public GitHub repo via URL / `owner/repo` shorthand |
+| **Baseline Gap** | Diff the live tenant against the loaded baseline grouped by Zero Trust persona — **Missing** / **Drift** / **Tenant-only** buckets, coverage score, and a **Download deployment bundle** button that ships a ZIP of criticality-ordered README + per-policy Graph-ready JSONs for direct import |
+| **CIS** | CIS Microsoft 365 Foundations Benchmark v6.0.0 alignment — 18 controls across sections 5.3 (Conditional Access) and 5.4 (Identity Protection & Device Controls) with M365 Message Center advisories surfaced inline |
+| **Locations** | Cross-references every named location (IP ranges, countries, compliant networks) with the CA policies that include or exclude it; flags orphaned references, untrusted locations used with "All Trusted Locations", empty country lists, and overly broad IP ranges |
+| **Personas** | Tenant scored against the required-control matrix per Zero Trust persona (Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, M365ServiceAccounts) with 10 controls each resolving to **Present** / **Report-only** / **Missing** |
+| **MS Learn** | Documented exclusion checks sourced from Microsoft Learn — flags policies missing required exclusions for token protection, Surface Hub, Teams Rooms, break-glass, CAE, External Authentication Methods, and more |
 
 ### Export / Download
 
-Click the **Export JSON** button (visible when results are loaded) to download the complete analysis as a JSON file, including all findings, CIS results, exclusion checks, and raw policy data.
+- **Export JSON** — complete analysis as a JSON file (findings, CIS results, exclusion checks, persona coverage, scorecard, baseline gaps, raw policies)
+- **Export PowerPoint** — executive deck including Zero Trust Scorecard, Persona × Control Coverage, per-persona detail slides, baseline gap summary, top findings, and CIS summary
+- **Download deployment bundle** (Baseline Gap tab) — ZIP with criticality-ordered README + one Graph-ready JSON per missing/drift policy under `policies/<persona>/<template>.json` and four auto-import recipes (Microsoft Graph PowerShell SDK, DCToolbox, `Invoke-MgGraphRequest`, Bash + curl + jq)
 
 ## Key Checks
 
 | Category | What It Detects |
 |---|---|
+| **MFA Coverage** | No enabled MFA-for-all-users policy. **Report-only aware** — if a report-only policy already covers MFA for All Users, the finding is downgraded from *critical* to *medium* and rewritten as "MFA for All Users exists but is Report-only" with guidance to promote after 7–14 days of telemetry |
 | **FOCI Token Sharing** | Excluded apps that belong to the Family of Client IDs — tokens interchangeable across 45+ Microsoft apps |
 | **Resource Exclusion Bypass** | Excluding ANY app from "All cloud apps" leaks Azure AD Graph & MS Graph basic scopes |
 | **CA-Immune Resources** | 6 Microsoft resources completely excluded from CA enforcement (always notApplied) |
@@ -259,7 +264,13 @@ Click the **Export JSON** button (visible when results are loaded) to download t
 | **Swiss Cheese Model** | Grant controls using OR instead of AND, missing MFA baseline layer |
 | **Legacy Authentication** | Legacy auth clients targeted but not blocked |
 | **Known CA Bypass Apps** | Apps with documented CA bypass capabilities (Azure CLI, PowerShell, AAD Connect, etc.) |
-| **Tenant-Wide Gaps** | Missing MFA-for-all, no legacy auth block, no break-glass accounts |
+| **Phishing-Resistant MFA Detection** | Resolves the policy's `authenticationStrength.id` against the tenant's auth-strength catalog and inspects `allowedCombinations` (FIDO2, Windows Hello for Business, x509 cert MFA, device-bound passkey, hardware OATH) — catches custom strengths whose displayName doesn't include "phishing-resistant" |
+| **Guest Authentication Strength** | Detects policies requiring auth strength for guests/externals; flags High when phishing-resistant, Medium when standard MFA |
+| **Break-Glass Coverage** | Locates break-glass accounts/groups and flags any enabled policy that does NOT exclude them |
+| **Persona × Control Matrix** | Per-persona presence of MFA, phishing-resistant MFA, compliant device, sign-in/user risk, sign-in frequency, legacy auth block, country block, non-corp network block, high-risk app block (10 controls × 9 personas) |
+| **Zero Trust Scorecard** | 15 weighted signals across Verify Explicitly / Use Least Privilege / Assume Breach — rolled up from existing analyzer + persona-coverage evidence (no extra Graph calls) |
+| **Baseline Drift** | Diff against a loaded Zero Trust baseline (Kenneth / Joey / custom GitHub) — categorizes every difference into Missing / Drift / Tenant-only with concrete configuration deltas |
+| **Tenant-Wide Gaps** | Missing MFA-for-all (report-only aware), no legacy auth block, no break-glass accounts |
 
 ## CIS Benchmark Controls (v6.0.0)
 

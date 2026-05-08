@@ -1967,9 +1967,14 @@ function checkBreakGlassPerPolicy(
 function checkTenantWideGaps(context: TenantContext): Finding[] {
   const findings: Finding[] = [];
   const enabled = context.policies.filter((p) => p.state === "enabled");
+  const reportOnly = context.policies.filter(
+    (p) => p.state === "enabledForReportingButNotEnforced"
+  );
 
-  // Check if any policy requires MFA for all users
-  const hasMfaForAll = enabled.some((p) => {
+  // A policy "covers MFA for all users" when it includes "All" users (or every
+  // member of the tenant) AND its grant controls require MFA or an
+  // authentication strength.
+  const isMfaForAll = (p: ConditionalAccessPolicy) => {
     const users = p.conditions.users;
     const grant = p.grantControls;
     return (
@@ -1977,23 +1982,49 @@ function checkTenantWideGaps(context: TenantContext): Finding[] {
       (grant?.builtInControls.includes("mfa") ||
         grant?.authenticationStrength != null)
     );
-  });
+  };
+
+  // Check if any policy requires MFA for all users
+  const hasMfaForAll = enabled.some(isMfaForAll);
+  const reportOnlyMfaForAll = reportOnly.find(isMfaForAll);
 
   if (!hasMfaForAll) {
-    findings.push({
-      id: nextFindingId(),
-      policyId: "tenant-wide",
-      policyName: "Tenant-Wide Analysis",
-      severity: "critical",
-      category: "MFA Coverage",
-      title: "No policy requires MFA for All Users",
-      description:
-        "No enabled policy was found that requires MFA (or authentication strength) for All Users. " +
-        "This means there may be users who can authenticate without MFA.",
-      recommendation:
-        "Create a baseline policy requiring MFA for All Users and All Cloud Apps. " +
-        "This is the foundation of the Swiss cheese model — MFA is the bare minimum.",
-    });
+    if (reportOnlyMfaForAll) {
+      // A report-only policy already covers MFA for all users. Downgrade the
+      // finding from critical to medium — the rule exists, it just isn't
+      // enforced yet.
+      findings.push({
+        id: nextFindingId(),
+        policyId: reportOnlyMfaForAll.id,
+        policyName: reportOnlyMfaForAll.displayName,
+        severity: "medium",
+        category: "MFA Coverage",
+        title: "MFA for All Users exists but is Report-only",
+        description:
+          `The policy **${reportOnlyMfaForAll.displayName}** requires MFA for All Users, ` +
+          `but is currently in **Report-only** mode and is not enforced. Sign-ins are logged but not blocked, ` +
+          "so users can still authenticate without MFA.",
+        recommendation:
+          "After observing report-only telemetry for 7–14 days with no unexpected blocks, " +
+          "switch this policy to **On** (enabled) so MFA is actually enforced. " +
+          "Confirm break-glass accounts are excluded before flipping the state.",
+      });
+    } else {
+      findings.push({
+        id: nextFindingId(),
+        policyId: "tenant-wide",
+        policyName: "Tenant-Wide Analysis",
+        severity: "critical",
+        category: "MFA Coverage",
+        title: "No policy requires MFA for All Users",
+        description:
+          "No enabled or report-only policy was found that requires MFA (or authentication strength) for All Users. " +
+          "This means there may be users who can authenticate without MFA.",
+        recommendation:
+          "Create a baseline policy requiring MFA for All Users and All Cloud Apps. " +
+          "This is the foundation of the Swiss cheese model — MFA is the bare minimum.",
+      });
+    }
   }
 
   // Check for legacy auth blocking
