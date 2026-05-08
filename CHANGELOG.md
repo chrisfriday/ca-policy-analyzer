@@ -5,6 +5,23 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-05-08
+
+### Added
+- **Zero Trust Persona Framework — Phase 3: Zero Trust Scorecard** — new dashboard widget that scores the tenant against [Microsoft's three Zero Trust principles](https://learn.microsoft.com/security/zero-trust/zero-trust-overview):
+  - New analyzer [src/lib/zero-trust-scorecard.ts](src/lib/zero-trust-scorecard.ts) — rolls up evidence from `analyzeAllPolicies` + `analyzePersonaCoverage` into 15 weighted signals across 3 pillars (no extra Graph calls, no double-counting)
+  - **Verify Explicitly** (5 signals): MFA coverage of enabled policies, phishing-resistant authentication strengths in use, compliant/Hybrid-joined device requirements, risk signals consumed (sign-in/user/named-locations), Admins MFA per persona coverage
+  - **Use Least Privilege** (5 signals): persona segmentation (admins vs internals vs externals), privileged-role exclusions (inverse of analyzer findings), policy scope (penalizes `users=All ∧ apps=All ∧ no-controls`), break-glass account presence, FOCI / token-theft risk findings (inverse)
+  - **Assume Breach** (5 signals): legacy auth blocked, sign-in risk policies, user risk policies, session controls (sign-in frequency / persistent browser), open critical+high findings backlog (inverse)
+  - Each signal has a 0–100 score, a weight (1–3), an evidence string, and a status (good ≥80, warn ≥50, bad <50, n/a when not applicable)
+  - Pillar score = weighted average of non-N/A signals; Overall = simple average of the three pillars
+  - New view component [src/components/zero-trust-scorecard.tsx](src/components/zero-trust-scorecard.tsx) — three pillar cards with color-coded score, progress bar, and click-to-expand signal breakdown showing every input that fed the pillar
+  - Renders at the top of the **Dashboard** tab so posture against the three principles is the first thing you see after analysis
+
+### Changed
+- `Dashboard` component now accepts an optional `scorecard` prop and renders the Zero Trust card above the existing score ring + finding-severity breakdown
+- `runAnalysis` in [src/app/page.tsx](src/app/page.tsx) calls `buildZeroTrustScorecard(ctx, mergedResult, persona)` after composite scoring so the persona-merged finding set feeds the Assume-Breach backlog signal
+
 ## [1.11.0] - 2026-05-07
 
 ### Added

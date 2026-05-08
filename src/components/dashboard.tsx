@@ -2,6 +2,8 @@
 
 import { AnalysisResult, CompositeScoreResult } from "@/lib/analyzer";
 import { TenantLicenses } from "@/lib/graph-client";
+import { ZeroTrustScorecard } from "@/lib/zero-trust-scorecard";
+import { ZeroTrustScorecardCard } from "./zero-trust-scorecard";
 import { ScoreRing, StatCard } from "./ui-primitives";
 import {
   ShieldCheck,
@@ -67,16 +69,19 @@ export function Dashboard({
   result,
   compositeScore,
   licenses,
+  scorecard,
 }: {
   result: AnalysisResult;
   compositeScore: CompositeScoreResult | null;
   licenses?: TenantLicenses | null;
+  scorecard?: ZeroTrustScorecard | null;
 }) {
   const s = result.tenantSummary;
   const score = compositeScore?.overall ?? result.overallScore;
 
   return (
     <div className="space-y-6">
+      {scorecard && <ZeroTrustScorecardCard scorecard={scorecard} />}
       {/* Top Row — Score + Summary Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         {/* Score Ring + Breakdown — spans 2 cols */}

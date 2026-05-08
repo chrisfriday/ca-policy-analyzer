@@ -25,6 +25,12 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ## Recent Changes
 
+### v1.12.0 — Zero Trust Scorecard (May 8, 2026)
+- **New Dashboard widget** scoring the tenant against [Microsoft's three Zero Trust principles](https://learn.microsoft.com/security/zero-trust/zero-trust-overview): **Verify Explicitly**, **Use Least Privilege**, **Assume Breach**
+- 15 weighted signals (5 per pillar) rolled up from existing analyzer + persona-coverage evidence — no extra Graph calls, no double-counting
+- Each pillar shows a 0–100 score, color-coded progress bar, and click-to-expand breakdown of every signal that fed it (with weight, status, and one-line evidence)
+- Renders at the top of the Dashboard so posture against the principles is the first thing visible after analysis
+
 ### v1.11.0 — Persona × Control Coverage (May 7, 2026)
 - **New Personas tab** — scores the tenant against the required-control matrix per Zero Trust persona (Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, M365ServiceAccounts)
 - Detects 10 controls per persona — MFA, phishing-resistant MFA, compliant device, sign-in/user risk, sign-in frequency, legacy auth block, country block, non-corp network block, high-risk app block

@@ -17,6 +17,7 @@ import { LocationsView } from "@/components/locations-view";
 import { PersonaView } from "@/components/persona-view";
 import { analyzeNamedLocations, LocationAnalysisResult } from "@/lib/location-analyzer";
 import { analyzePersonaCoverage, PersonaCoverageResult } from "@/lib/persona-coverage";
+import { buildZeroTrustScorecard, ZeroTrustScorecard } from "@/lib/zero-trust-scorecard";
 import { exportToExcel, exportToPowerPoint, loadDefaultLogo } from "@/lib/export-utils";
 import { Shield, Loader2, Play, Download, RefreshCw, LayoutDashboard, FileText, AlertTriangle, Layers, CheckSquare, BookOpen, FileSpreadsheet, Presentation, MapPin, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ export default function Home() {
   const [customRepoDisplay, setCustomRepoDisplay] = useState<string | null>(null);
   const [cisResult, setCisResult] = useState<CISAlignmentResult | null>(null);
   const [personaResult, setPersonaResult] = useState<PersonaCoverageResult | null>(null);
+  const [scorecard, setScorecard] = useState<ZeroTrustScorecard | null>(null);
   const [compositeScore, setCompositeScore] = useState<CompositeScoreResult | null>(null);
   const [locationResult, setLocationResult] = useState<LocationAnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>("dashboard");
@@ -118,6 +120,14 @@ export default function Home() {
       setProgress("Computing security posture score…");
       const composite = calculateCompositeScore(analysisResult, cis, templates);
       setCompositeScore(composite);
+
+      setProgress("Scoring against Zero Trust pillars…");
+      const mergedForScorecard: AnalysisResult =
+        persona.findings.length > 0
+          ? { ...analysisResult, findings: [...analysisResult.findings, ...persona.findings] }
+          : analysisResult;
+      const zt = buildZeroTrustScorecard(ctx, mergedForScorecard, persona);
+      setScorecard(zt);
 
       setActiveTab("dashboard");
     } catch (e: unknown) {
@@ -342,7 +352,7 @@ export default function Home() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "dashboard" && <Dashboard result={result} compositeScore={compositeScore} licenses={context?.licenses} />}
+      {activeTab === "dashboard" && <Dashboard result={result} compositeScore={compositeScore} licenses={context?.licenses} scorecard={scorecard} />}
       {activeTab === "policies" && (
         <PolicyList results={result.policyResults} hideMicrosoft={hideMicrosoft} onToggleHideMicrosoft={setHideMicrosoft} resolverMaps={context ? { directoryObjects: context.directoryObjects, servicePrincipals: context.servicePrincipals } : undefined} />
       )}
