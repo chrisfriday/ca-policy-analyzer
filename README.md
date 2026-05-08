@@ -82,11 +82,26 @@ All detected issues ranked Critical → Info. Expand any finding to see the full
 <!-- Replace with actual screenshot: open the app → Findings tab → expand a finding -->
 ![Findings](docs/screenshots/findings.png)
 
-### Templates — Gap Analysis
+### Templates — Gap Analysis & Persona Baselines
 
 39 best-practice templates (including Workload Identity) compared against your tenant. Each template shows whether you have a matching policy, a partial match, or a gap.
 
-<!-- Replace with actual screenshot: open the app → Templates tab -->
+**Two built-in Zero Trust persona baselines** load with one click — each follows [Claus Jespersen's persona framework](https://github.com/microsoft/ConditionalAccessforZeroTrustResources):
+
+- **Kenneth van Surksum — Baseline 2025.10** — community-maintained Zero Trust persona baseline, refreshed quarterly. Strong reference for production-grade tenants. ([github.com/kennethvs/cabaseline202510](https://github.com/kennethvs/cabaseline202510))
+- **Joey Verlinden — Conditional Access Baseline** — persona-based baseline aligned with Microsoft's Zero Trust guidance. The loader pulls the full DCToolbox-style restore bundle from the repo's `Config/` root: 67 ConditionalAccess policies + 33 exclusion groups + named-locations allow-lists + migration table. ([github.com/j0eyv/ConditionalAccessBaseline](https://github.com/j0eyv/ConditionalAccessBaseline/tree/main/Config))
+
+**Compare against any public GitHub repo** — the **Compare Custom Repo** button accepts:
+
+- a full GitHub URL (e.g. `https://github.com/owner/repo`)
+- a branch/path deep link (e.g. `https://github.com/owner/repo/tree/main/policies`)
+- `owner/repo` shorthand
+
+The loader auto-detects JSON files, converts Graph-format CA policy exports into templates with auto-generated fingerprints, and matches them against your tenant. Results group by detected Zero Trust persona (Global / Admins / Internals / Externals / GuestAdmins / Developers / CorpServiceAccounts / WorkloadIdentities / M365ServiceAccounts) when persona naming is detected, falling back to CAD/CAL/CAP prefix grouping otherwise.
+
+Claus Jespersen's [original Microsoft persona framework repo](https://github.com/microsoft/ConditionalAccessforZeroTrustResources) is credited as the canonical reference but is no longer wired as a one-click baseline — it is no longer actively maintained as a deployable bundle.
+
+<!-- Open the app → Templates tab -->
 ![Templates](docs/screenshots/templates.png)
 ![Templates](docs/screenshots/templates2.png)
 
@@ -225,7 +240,7 @@ The app has six tabs accessible after running an analysis:
 | **Dashboard** | Security posture score (0–100), severity breakdown, risk category distribution, and at-a-glance stats |
 | **Policies** | Every CA policy visualized as a flow card: Users → Conditions → Apps → Grant/Session Controls |
 | **Findings** | All detected issues ranked by severity (Critical → Info) with affected policies and remediation guidance |
-| **Templates** | 39 best-practice policy templates compared against your tenant — shows matched, partial, and missing policies including Workload Identity policies |
+| **Templates** | 39 best-practice policy templates compared against your tenant — shows matched, partial, and missing policies including Workload Identity policies. **One-click load** of two persona-aligned baselines (Kenneth van Surksum 2025.10, Joey Verlinden Conditional Access Baseline) or compare against any public GitHub repo via URL / `owner/repo` shorthand |
 | **CIS** | CIS Microsoft 365 Foundations Benchmark v6.0.0 alignment — 18 controls across sections 5.3 (Conditional Access) and 5.4 (Identity Protection & Device Controls) |
 | **MS Learn** | Documented exclusion checks sourced from Microsoft Learn — flags policies missing required exclusions for token protection, Surface Hub, Teams Rooms, break-glass, CAE, and more |
 
