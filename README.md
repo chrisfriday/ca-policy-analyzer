@@ -25,6 +25,13 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ## Recent Changes
 
+> Only the **5 most recent releases** are summarized here. Full version history lives in [CHANGELOG.md](CHANGELOG.md).
+
+### v1.14.2 — Phishing-resistant MFA detection fix (May 8, 2026)
+- **Zero Trust scorecard** — the *Verify Explicitly → Phishing-resistant MFA in use* signal previously matched only the authentication-strength **displayName** with a regex. Custom strengths like `Modern MFA + TAP` whose `allowedCombinations` *contain* FIDO2 / Windows Hello for Business / x509 certificate MFA were being missed.
+- Detection now resolves the policy's `authenticationStrength.id` against `TenantContext.authStrengthPolicies` and inspects `allowedCombinations` directly, plus matches the well-known built-in **Phishing-resistant MFA** strength id `00000000-0000-0000-0000-000000000004`. Tokens treated as phishing-resistant: `fido2`, `windowsHelloForBusiness`, `x509CertificateMultiFactor`, `x509CertificateSingleFactor`, `deviceBoundPasskey`, `hardwareOath`.
+- Evidence string now names the matching strength so the operator can verify what the engine picked.
+
 ### v1.14.1 — Deployment plan now ships as a ZIP bundle (May 8, 2026)
 - **"Download deployment bundle"** on the Baseline Gap tab now produces a ZIP with: a Zero Trust criticality-ordered `README.md` (Critical → High → Medium → Low, personas in canonical order within each tier), the original `deployment-plan.json` manifest, and one Graph-ready JSON file per policy at `policies/<persona>/<template>.json`.
 - The bundle README bakes in **four auto-import recipes** (Microsoft Graph PowerShell SDK, DCToolbox, `Invoke-MgGraphRequest`, Bash + curl + jq) so the operator can pick the workflow that matches their environment.
@@ -36,7 +43,7 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ### v1.13.0 — Baseline Gap Analysis (May 8, 2026)
 - **New Baseline Gap tab** that diffs the live tenant against a loaded Zero Trust baseline (Kenneth / Joey / custom GitHub repo / built-in)
-- Three actionable buckets: **Missing** (baseline has it, tenant doesn’t), **Drift** (both have it but they differ), **Tenant-only** (enabled tenant policies with no baseline equivalent)
+- Three actionable buckets: **Missing** (baseline has it, tenant doesn't), **Drift** (both have it but they differ), **Tenant-only** (enabled tenant policies with no baseline equivalent)
 - Every gap is grouped by Zero Trust persona so admins/internals/externals/etc. each get their own card with missing / drift / tenant-only counts
 - Coverage score 0–100 = `(present + 0.5 × partial) / applicable_templates`
 - Toggleable filters, expandable per-entry evidence (closest tenant policy name + concrete differences), severity badges driven by template priority
@@ -47,27 +54,7 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 - Each pillar shows a 0–100 score, color-coded progress bar, and click-to-expand breakdown of every signal that fed it (with weight, status, and one-line evidence)
 - Renders at the top of the Dashboard so posture against the principles is the first thing visible after analysis
 
-### v1.11.0 — Persona × Control Coverage (May 7, 2026)
-- **New Personas tab** — scores the tenant against the required-control matrix per Zero Trust persona (Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, M365ServiceAccounts)
-- Detects 10 controls per persona — MFA, phishing-resistant MFA, compliant device, sign-in/user risk, sign-in frequency, legacy auth block, country block, non-corp network block, high-risk app block
-- Each control resolves to **Present** / **Report-only** / **Missing** with the actual policies that satisfy it
-- Critical gaps (Admins missing MFA, Internals missing user-risk, etc.) surface in the Findings tab and exports
-
-### v1.10.0 — Zero Trust Persona Framework (May 7, 2026)
-- **Persona-based intelligence on the Templates tab**, aligned with [Claus Jespersen's Microsoft framework](https://github.com/microsoft/ConditionalAccessforZeroTrustResources)
-- **One-click load** of community Zero Trust baselines: [Kenneth van Surksum](https://github.com/kennethvs/cabaseline202510), [Joey Verlinden](https://github.com/j0eyv/ConditionalAccessBaseline), [Claus Jespersen](https://github.com/microsoft/ConditionalAccessforZeroTrustResources)
-- **Persona detection** from policy displayName: Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, Microsoft365ServiceAccounts
-- **Persona-based grouping** in the Templates view when persona naming is detected (falls back to CAD/CAL/CAP prefix grouping otherwise)
-- New reference doc: [docs/zero-trust-persona-framework.md](docs/zero-trust-persona-framework.md)
-
-### v1.9.0 — Custom GitHub Template Comparison (April 17, 2026)
-- **Compare against any public GitHub CA policy repo** — new "Compare Custom Repo" button on the Templates tab
-- Accepts full GitHub URLs, branch/path deep links, or `owner/repo` shorthand
-- Auto-detects JSON files, converts Graph API policy exports into templates with auto-generated fingerprints
-- Break-glass severity fix: disabled policies → **low**, report-only → **medium**
-- Entra Connect version corrected to v2.5.76.0; DirSync check now links to [version history](https://learn.microsoft.com/entra/identity/hybrid/connect/reference-connect-version-history)
-
-See [CHANGELOG.md](CHANGELOG.md) for full details.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.11.0 (Persona × Control Coverage), v1.10.0 (Zero Trust Persona Framework), v1.9.0 (Custom GitHub Template Comparison) and earlier.
 
 ---
 
@@ -102,6 +89,20 @@ All detected issues ranked Critical → Info. Expand any finding to see the full
 <!-- Replace with actual screenshot: open the app → Templates tab -->
 ![Templates](docs/screenshots/templates.png)
 ![Templates](docs/screenshots/templates2.png)
+
+### Personas — Zero Trust Persona × Control Coverage
+
+The Personas tab scores your tenant against the required-control matrix for each Zero Trust persona (Global, Admins, Internals, Externals, GuestAdmins, Developers, CorpServiceAccounts, WorkloadIdentities, M365ServiceAccounts). Each persona card lists the 10 expected controls — MFA, phishing-resistant MFA, compliant device, sign-in/user risk, sign-in frequency, legacy auth block, country block, non-corp network block, high-risk app block — and resolves each one to **Present** / **Report-only** / **Missing** with the actual policies that satisfy it. Critical gaps (e.g. Admins missing MFA, Internals missing user-risk) also feed into the Findings tab and exports.
+
+<!-- Open the app → run analysis → Personas tab -->
+![Personas](docs/screenshots/Personas.png)
+
+### Baseline Gap — Diff Against a Zero Trust Baseline
+
+The Baseline Gap tab diffs your live tenant against a loaded Zero Trust baseline (Kenneth van Surksum, Joey Verlinden, Claus Jespersen, or any custom GitHub repo) and groups every difference by persona. Three buckets: **Missing** (baseline has it, tenant doesn't), **Drift** (both sides have it but the configuration differs), **Tenant-only** (enabled tenant policies with no baseline equivalent). Coverage score is `(present + 0.5 × partial) / applicable_templates`. Each entry expands to show the closest tenant policy name and the concrete configuration differences, and the **Download deployment bundle** button packages every missing/drift policy as a ZIP with a criticality-ordered README plus one Graph-ready JSON per policy under `policies/<persona>/<template>.json` for direct import via Graph PowerShell, DCToolbox, `Invoke-MgGraphRequest`, or curl.
+
+<!-- Open the app → load a baseline → Baseline Gap tab -->
+![Baseline Gap Analysis](docs/screenshots/BaselineGapAnalysis.png)
 
 ### CIS v6.0 — Benchmark Alignment
 
