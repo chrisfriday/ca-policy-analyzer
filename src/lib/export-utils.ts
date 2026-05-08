@@ -14,9 +14,9 @@ import {
 } from "./analyzer";
 import { CISAlignmentResult } from "@/data/cis-benchmarks";
 import { resolveRoleList, resolveGuidList, resolveAppList, type GuidResolverMaps } from "@/lib/role-names";
-import type { PersonaCoverageResult } from "./persona-coverage";
+import type { PersonaCoverageResult, PersonaCoverageRow } from "./persona-coverage";
 import type { ZeroTrustScorecard } from "./zero-trust-scorecard";
-import type { BaselineGapResult } from "./baseline-gap";
+import type { BaselineGapResult, PersonaGapBucket } from "./baseline-gap";
 import { PERSONA_META } from "./personas";
 
 // ─── Export Options ──────────────────────────────────────────────────────────
@@ -550,6 +550,8 @@ export async function exportToPowerPoint(
   // ── Persona × Control Coverage ─────────────────────────────────────
   if (options?.personaResult) {
     addPersonaCoverageSlide(pptx, options.personaResult);
+    // Per-persona detail slides — one slide per persona with assigned policies
+    addPerPersonaSlides(pptx, options.personaResult, options?.baselineGap ?? undefined);
   }
 
   // ── Baseline Gap Summary ───────────────────────────────────────────
@@ -1076,6 +1078,221 @@ function addBaselineGapSlide(pptx: PptxGenJS, gap: BaselineGapResult) {
       border: { type: "solid", color: COLORS.muted, pt: 0.25 },
       fill: { color: COLORS.bg },
     });
+  }
+}
+
+// ─── Per-persona detail slides ───────────────────────────────────────────────
+/**
+ * Emits one slide per persona that the tenant actually has policies for.
+ * Each slide shows the persona's coverage score, control coverage breakdown
+ * (with the names of partial / missing controls), and baseline-gap entries
+ * attributed to that persona (missing / drift / tenant-only).
+ */
+function addPerPersonaSlides(
+  pptx: PptxGenJS,
+  pr: PersonaCoverageResult,
+  gap: BaselineGapResult | undefined,
+) {
+  // Build a quick lookup from persona → gap bucket
+  const gapByPersona = new Map<string, PersonaGapBucket>();
+  if (gap) {
+    for (const b of gap.buckets) gapByPersona.set(b.persona, b);
+  }
+
+  const rows = pr.rows.filter(
+    (r) => r.assignedPolicies.length > 0 || (gapByPersona.get(r.persona)?.entries.length ?? 0) > 0,
+  );
+
+  for (const row of rows) {
+    addPersonaDetailSlide(pptx, row, gapByPersona.get(row.persona));
+  }
+}
+
+function addPersonaDetailSlide(
+  pptx: PptxGenJS,
+  row: PersonaCoverageRow,
+  bucket: PersonaGapBucket | undefined,
+) {
+  const slide = pptx.addSlide();
+  slide.background = { color: COLORS.bg };
+
+  const meta = PERSONA_META[row.persona];
+
+  // ── Title ────────────────────────────────────────────────────────────────
+  slide.addText(`${meta.emoji}  ${meta.label}`, {
+    x: 0.5, y: 0.3, w: 9, h: 0.6,
+    fontSize: 24, fontFace: "Arial", color: COLORS.white, bold: true,
+  });
+  slide.addText(meta.description ?? "", {
+    x: 0.5, y: 0.9, w: 9, h: 0.4,
+    fontSize: 11, fontFace: "Arial", color: COLORS.muted, italic: true,
+  });
+
+  // ── Score badge (top right) ──────────────────────────────────────────────
+  slide.addShape("roundRect", {
+    x: 10.4, y: 0.3, w: 2.3, h: 1.05,
+    fill: { color: COLORS.card },
+    line: { color: pillarColor(row.score), width: 2 },
+    rectRadius: 0.1,
+  });
+  slide.addText(`${row.score}`, {
+    x: 10.4, y: 0.32, w: 2.3, h: 0.65,
+    fontSize: 32, fontFace: "Arial", color: pillarColor(row.score), bold: true, align: "center",
+  });
+  slide.addText("Coverage Score", {
+    x: 10.4, y: 0.95, w: 2.3, h: 0.35,
+    fontSize: 9, fontFace: "Arial", color: COLORS.muted, align: "center",
+  });
+
+  // ── Stat strip ───────────────────────────────────────────────────────────
+  const present = row.controls.filter((c) => c.status === "present").length;
+  const partial = row.controls.filter((c) => c.status === "partial").length;
+  const missing = row.controls.filter((c) => c.status === "missing").length;
+
+  const stats = [
+    { label: "Assigned policies", value: String(row.assignedPolicies.length), color: COLORS.text },
+    { label: "Enabled", value: String(row.enabledCount), color: COLORS.green },
+    { label: "Controls present", value: String(present), color: COLORS.green },
+    { label: "Partial", value: String(partial), color: COLORS.yellow },
+    { label: "Missing", value: String(missing), color: COLORS.red },
+  ];
+  const stripY = 1.6;
+  const stripCardW = 2.4;
+  const stripCardH = 0.85;
+  const stripGap = 0.1;
+  stats.forEach((s, i) => {
+    const x = 0.5 + i * (stripCardW + stripGap);
+    slide.addShape("roundRect", {
+      x, y: stripY, w: stripCardW, h: stripCardH,
+      fill: { color: COLORS.card }, line: { color: COLORS.muted, width: 0.5 }, rectRadius: 0.06,
+    });
+    slide.addText(s.value, {
+      x, y: stripY + 0.05, w: stripCardW, h: 0.45,
+      fontSize: 22, fontFace: "Arial", color: s.color, bold: true, align: "center",
+    });
+    slide.addText(s.label, {
+      x, y: stripY + 0.5, w: stripCardW, h: 0.3,
+      fontSize: 9, fontFace: "Arial", color: COLORS.muted, align: "center",
+    });
+  });
+
+  // ── Left column: Control coverage details ────────────────────────────────
+  const colY = 2.7;
+  const colH = 4.5;
+  slide.addText("Control coverage", {
+    x: 0.5, y: colY, w: 6, h: 0.4,
+    fontSize: 14, fontFace: "Arial", color: COLORS.white, bold: true,
+  });
+
+  // Show partial + missing first (the actionable ones), then present
+  const sortedControls = [...row.controls].sort((a, b) => {
+    const order: Record<string, number> = { missing: 0, partial: 1, present: 2, "n/a": 3 };
+    return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+  });
+
+  const controlRows: PptxGenJS.TableRow[] = [
+    [
+      { text: "Status", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      { text: "Control", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+    ],
+  ];
+  for (const c of sortedControls.slice(0, 10)) {
+    const statusColor =
+      c.status === "present" ? COLORS.green :
+      c.status === "partial" ? COLORS.yellow :
+      c.status === "missing" ? COLORS.red : COLORS.muted;
+    const statusText =
+      c.status === "present" ? "✓ Present" :
+      c.status === "partial" ? "⚠ Partial" :
+      c.status === "missing" ? "✗ Missing" : "— n/a";
+    controlRows.push([
+      { text: statusText, options: { color: statusColor, bold: true } },
+      { text: c.label, options: { color: COLORS.text } },
+    ]);
+  }
+  slide.addTable(controlRows, {
+    x: 0.5, y: colY + 0.45, w: 6, colW: [1.5, 4.5],
+    fontSize: 9, fontFace: "Arial",
+    border: { type: "solid", color: COLORS.muted, pt: 0.25 },
+    fill: { color: COLORS.bg },
+  });
+  if (sortedControls.length > 10) {
+    slide.addText(`+ ${sortedControls.length - 10} more`, {
+      x: 0.5, y: colY + colH - 0.3, w: 6, h: 0.3,
+      fontSize: 9, fontFace: "Arial", color: COLORS.muted, italic: true,
+    });
+  }
+
+  // ── Right column: Baseline gaps for this persona ─────────────────────────
+  slide.addText("Baseline gaps", {
+    x: 6.8, y: colY, w: 6, h: 0.4,
+    fontSize: 14, fontFace: "Arial", color: COLORS.white, bold: true,
+  });
+
+  if (!bucket || bucket.entries.length === 0) {
+    slide.addText("No baseline gaps detected for this persona.", {
+      x: 6.8, y: colY + 0.5, w: 6, h: 0.4,
+      fontSize: 11, fontFace: "Arial", color: COLORS.muted, italic: true,
+    });
+  } else {
+    // Top stat row for gaps
+    const gapStats = [
+      { label: "Missing", value: String(bucket.missingCount), color: COLORS.red },
+      { label: "Drift", value: String(bucket.driftCount), color: COLORS.yellow },
+      { label: "Tenant-only", value: String(bucket.tenantOnlyCount), color: COLORS.purple },
+    ];
+    const gw = 1.95, gh = 0.7, gy = colY + 0.45;
+    gapStats.forEach((g, i) => {
+      const gx = 6.8 + i * (gw + 0.07);
+      slide.addShape("roundRect", {
+        x: gx, y: gy, w: gw, h: gh,
+        fill: { color: COLORS.card }, line: { color: g.color, width: 0.75 }, rectRadius: 0.06,
+      });
+      slide.addText(g.value, {
+        x: gx, y: gy + 0.02, w: gw, h: 0.4,
+        fontSize: 18, fontFace: "Arial", color: g.color, bold: true, align: "center",
+      });
+      slide.addText(g.label, {
+        x: gx, y: gy + 0.42, w: gw, h: 0.25,
+        fontSize: 9, fontFace: "Arial", color: COLORS.muted, align: "center",
+      });
+    });
+
+    // Top entries — sort by severity, take 6
+    const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+    const topEntries = [...bucket.entries]
+      .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9))
+      .slice(0, 6);
+
+    const entryRows: PptxGenJS.TableRow[] = [
+      [
+        { text: "Kind", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+        { text: "Sev", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+        { text: "Entry", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      ],
+    ];
+    for (const e of topEntries) {
+      const kindColor =
+        e.kind === "missing" ? COLORS.red :
+        e.kind === "drift" ? COLORS.yellow : COLORS.purple;
+      entryRows.push([
+        { text: e.kind, options: { color: kindColor, bold: true } },
+        { text: e.severity, options: { color: severityColor(e.severity) } },
+        { text: e.label, options: { color: COLORS.text } },
+      ]);
+    }
+    slide.addTable(entryRows, {
+      x: 6.8, y: gy + gh + 0.15, w: 6, colW: [0.9, 0.7, 4.4],
+      fontSize: 9, fontFace: "Arial",
+      border: { type: "solid", color: COLORS.muted, pt: 0.25 },
+      fill: { color: COLORS.bg },
+    });
+    if (bucket.entries.length > 6) {
+      slide.addText(`+ ${bucket.entries.length - 6} more gap${bucket.entries.length - 6 === 1 ? "" : "s"}`, {
+        x: 6.8, y: colY + colH - 0.3, w: 6, h: 0.3,
+        fontSize: 9, fontFace: "Arial", color: COLORS.muted, italic: true,
+      });
+    }
   }
 }
 
