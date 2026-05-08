@@ -72,6 +72,41 @@ function decodeBody(buf: ArrayBuffer): string {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
+// ─── Key Normalization ───────────────────────────────────────────────────────
+
+/**
+ * Recursively lowercase the first character of every object key. PowerShell
+ * `ConvertTo-Json` exports CA policies with PascalCase keys (`DisplayName`,
+ * `Conditions`, `GrantControls`, ...) whereas the Microsoft Graph API uses
+ * camelCase. Our classifier and template builder both expect camelCase, so we
+ * normalize once at ingest. Keys that are already camelCase or that look like
+ * GUIDs / acronyms are passed through unchanged.
+ */
+function normalizeKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeKeys);
+  if (value && typeof value === "object") {
+    const src = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(src)) {
+      // Preserve `@odata.*` and other special keys exactly.
+      if (k.startsWith("@") || k.startsWith("$")) {
+        out[k] = normalizeKeys(v);
+        continue;
+      }
+      // Lowercase only the leading letter; keep camelCase keys idempotent.
+      const nk =
+        k.length > 0 && k[0] >= "A" && k[0] <= "Z"
+          ? k[0].toLowerCase() + k.slice(1)
+          : k;
+      // If both PascalCase and camelCase exist (rare), camelCase wins.
+      if (nk in out) continue;
+      out[nk] = normalizeKeys(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 // ─── Classification ──────────────────────────────────────────────────────────
 
 type JsonKind =
@@ -514,7 +549,8 @@ export async function fetchGitHubTemplates(
         return {
           name: file.name,
           path: file.path,
-          data: JSON.parse(text) as unknown,
+          // Normalize PascalCase (PowerShell ConvertTo-Json) → camelCase (Graph).
+          data: normalizeKeys(JSON.parse(text)) as unknown,
         };
       })
     );
@@ -593,6 +629,102 @@ export async function fetchGitHubTemplates(
     repoUrl,
     repoDisplay,
     bundle: hasBundle ? bundle : undefined,
+    error: info,
+  };
+}
+
+// ─── Layered (primary + fallback) fetcher ────────────────────────────────────
+
+/**
+ * Fetch templates from a primary GitHub folder and merge in any policies from
+ * a fallback folder that the primary doesn't already define. Designed for
+ * staged-migration repos where new/updated policies live in one folder and
+ * the older originals remain in another (e.g. Jhope188's
+ * `Updated/Policies/` + `Policies/` layout).
+ *
+ * Dedup key is the normalized policy `displayName` — we strip a leading
+ * vendor prefix (anything before the first " - ") and lowercase the rest, so
+ * "IAC - GLOBAL - GRANT - MFA - AllAdmins" and
+ * "ACME - GLOBAL - GRANT - MFA - AllAdmins" collapse to the same logical
+ * policy and the primary version wins.
+ */
+export async function fetchLayeredGitHubTemplates(
+  primaryUrl: string,
+  fallbackUrl: string
+): Promise<GitHubTemplateResult> {
+  const [primary, fallback] = await Promise.all([
+    fetchGitHubTemplates(primaryUrl),
+    fetchGitHubTemplates(fallbackUrl),
+  ]);
+
+  // If the primary failed completely, fall back to the fallback result so the
+  // user still gets something, with a hint that we couldn't reach the primary.
+  if (primary.templates.length === 0 && fallback.templates.length === 0) {
+    return {
+      templates: [],
+      repoUrl: primary.repoUrl,
+      repoDisplay: primary.repoDisplay,
+      error:
+        primary.error ?? fallback.error ?? "No templates found in either folder.",
+    };
+  }
+
+  const dedupKey = (name: string): string => {
+    // Strip leading vendor prefix ("IAC - ", "ACME - ", "ACME-_ZTCA_-_", ...).
+    // We split on " - " (Graph-style) or "_-_" (URL-encoded export style) and
+    // drop the first segment if there are at least 2 segments.
+    const cleaned = name.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+    const parts = cleaned.split(/\s+-\s+/);
+    const tail = parts.length >= 2 ? parts.slice(1).join(" - ") : cleaned;
+    return tail.toLowerCase();
+  };
+
+  const merged: PolicyTemplate[] = [];
+  const seen = new Set<string>();
+
+  for (const t of primary.templates) {
+    const key = dedupKey(t.displayName);
+    seen.add(key);
+    merged.push(t);
+  }
+  let fallbackUsed = 0;
+  for (const t of fallback.templates) {
+    const key = dedupKey(t.displayName);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(t);
+    fallbackUsed++;
+  }
+
+  // Merge bundles: primary wins on key collisions.
+  const mergedBundle: BaselineBundle = {
+    groups: { ...(fallback.bundle?.groups ?? {}), ...(primary.bundle?.groups ?? {}) },
+    namedLocations: {
+      ...(fallback.bundle?.namedLocations ?? {}),
+      ...(primary.bundle?.namedLocations ?? {}),
+    },
+    hasMigrationTable:
+      (primary.bundle?.hasMigrationTable ?? false) ||
+      (fallback.bundle?.hasMigrationTable ?? false),
+  };
+  const groupCount = Object.keys(mergedBundle.groups).length;
+  const nlCount = Object.keys(mergedBundle.namedLocations).length;
+  const hasBundle =
+    groupCount > 0 || nlCount > 0 || mergedBundle.hasMigrationTable;
+
+  const parts: string[] = [
+    `${primary.templates.length} from primary`,
+    `${fallbackUsed} fallback`,
+  ];
+  if (groupCount > 0) parts.push(`${groupCount} groups`);
+  if (nlCount > 0) parts.push(`${nlCount} named locations`);
+  const info = `Loaded ${merged.length} unique policies (${parts.join(" + ")}).`;
+
+  return {
+    templates: merged,
+    repoUrl: primary.repoUrl,
+    repoDisplay: primary.repoDisplay,
+    bundle: hasBundle ? mergedBundle : undefined,
     error: info,
   };
 }

@@ -5,7 +5,7 @@ import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { loadTenantContext, TenantContext } from "@/lib/graph-client";
 import { analyzeAllPolicies, AnalysisResult, calculateCompositeScore, CompositeScoreResult } from "@/lib/analyzer";
 import { analyzeTemplates, TemplateAnalysisResult } from "@/lib/template-matcher";
-import { fetchGitHubTemplates } from "@/lib/github-templates";
+import { fetchGitHubTemplates, fetchLayeredGitHubTemplates } from "@/lib/github-templates";
 import { runCISAlignment, CISAlignmentResult } from "@/data/cis-benchmarks";
 import { Dashboard } from "@/components/dashboard";
 import { PolicyList } from "@/components/policy-list";
@@ -53,14 +53,25 @@ export default function Home() {
   }, [context, templateResult]);
 
   /** Load templates from a custom GitHub repo and re-run template analysis */
-  const handleLoadGitHub = useCallback(async (url: string): Promise<string | null> => {
+  const handleLoadGitHub = useCallback(async (url: string, fallbackUrl?: string): Promise<string | null> => {
     if (!context) return "Run an analysis first before loading custom templates.";
-    const result = await fetchGitHubTemplates(url);
+    const result = fallbackUrl
+      ? await fetchLayeredGitHubTemplates(url, fallbackUrl)
+      : await fetchGitHubTemplates(url);
     if (result.error && result.templates.length === 0) return result.error;
     const templates = analyzeTemplates(context, result.templates);
     setTemplateResult(templates);
     setCustomRepoDisplay(result.repoDisplay);
-    localStorage.setItem("customRepoUrl", url);
+    // Persist as JSON when a fallback is in play, otherwise keep the legacy
+    // plain-string format so older saved values still work.
+    if (fallbackUrl) {
+      localStorage.setItem(
+        "customRepoUrl",
+        JSON.stringify({ url, fallbackUrl })
+      );
+    } else {
+      localStorage.setItem("customRepoUrl", url);
+    }
     return result.error ?? null; // partial error (some files skipped)
   }, [context]);
 
@@ -94,7 +105,22 @@ export default function Home() {
       const savedRepoUrl = localStorage.getItem("customRepoUrl");
       if (savedRepoUrl) {
         setProgress("Restoring custom repo templates…");
-        const custom = await fetchGitHubTemplates(savedRepoUrl);
+        // Saved value is either a plain URL string (legacy) or a JSON
+        // `{ url, fallbackUrl }` payload for layered baselines.
+        let parsedUrl = savedRepoUrl;
+        let parsedFallback: string | undefined;
+        if (savedRepoUrl.startsWith("{")) {
+          try {
+            const j = JSON.parse(savedRepoUrl) as { url?: string; fallbackUrl?: string };
+            if (j.url) parsedUrl = j.url;
+            parsedFallback = j.fallbackUrl;
+          } catch {
+            // Fall through and treat as a plain URL.
+          }
+        }
+        const custom = parsedFallback
+          ? await fetchLayeredGitHubTemplates(parsedUrl, parsedFallback)
+          : await fetchGitHubTemplates(parsedUrl);
         if (custom.templates.length > 0) {
           activeTemplates = analyzeTemplates(ctx, custom.templates);
           setTemplateResult(activeTemplates);

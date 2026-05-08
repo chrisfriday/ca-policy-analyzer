@@ -42,7 +42,7 @@ interface TemplatesViewProps {
   /** Current custom repo display name (null = using built-in) */
   customRepoDisplay?: string | null;
   /** Callback when user wants to load templates from a GitHub URL */
-  onLoadGitHub?: (url: string) => Promise<string | null>;
+  onLoadGitHub?: (url: string, fallbackUrl?: string) => Promise<string | null>;
   /** Callback to reset back to built-in templates */
   onResetTemplates?: () => void;
 }
@@ -720,7 +720,7 @@ export function TemplatesView({
                       if (!onLoadGitHub || loading) return;
                       setLoading(true);
                       setLoadError(null);
-                      const error = await onLoadGitHub(baseline.repoUrl);
+                      const error = await onLoadGitHub(baseline.repoUrl, baseline.fallbackUrl);
                       setLoading(false);
                       if (error) setLoadError(error);
                       else {

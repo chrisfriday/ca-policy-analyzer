@@ -343,8 +343,15 @@ export interface KnownBaseline {
   label: string;
   author: string;
   repoUrl: string;
+  /**
+   * Optional fallback URL. When set, the loader fetches `repoUrl` first and
+   * fills in any missing policies (matched by `displayName`) from this URL —
+   * used for staged-migration repos that publish updated policies in one
+   * folder while older originals remain in another.
+   */
+  fallbackUrl?: string;
   description: string;
-  source: "claus" | "kenneth" | "joey";
+  source: "claus" | "kenneth" | "joey" | "jhope";
 }
 
 /**
@@ -373,6 +380,21 @@ export const KNOWN_BASELINES: KnownBaseline[] = [
     description:
       "Persona-based baseline aligned with Microsoft's Zero Trust guidance and Claus Jespersen's framework. Includes a full DCToolbox-style restore bundle (policies + exclusion groups + named locations + migration table).",
     source: "joey",
+  },
+  {
+    id: "jhope188",
+    label: "Jon Hope — Inforcer baseline (Updated + fallback)",
+    author: "Jon Hope (Inforcer)",
+    // Primary: refreshed policies with the two-category guest split
+    // (B2B-Guest + Mixed-Guests). Fallback fills in any policy not yet
+    // migrated from the original ACME-prefixed exports.
+    repoUrl:
+      "https://github.com/Jhope188/ConditionalAccessPolicies/tree/main/Updated/Policies",
+    fallbackUrl:
+      "https://github.com/Jhope188/ConditionalAccessPolicies/tree/main/Policies",
+    description:
+      "Inforcer-maintained persona baseline. Loader prefers the Updated/Policies/ folder (newer, two-category guest model) and falls back to the original Policies/ folder for any policy not yet migrated.",
+    source: "jhope",
   },
 ];
 

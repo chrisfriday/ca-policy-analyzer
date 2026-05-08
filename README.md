@@ -27,6 +27,13 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 > Only the **5 most recent releases** are summarized here. Full version history lives in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.14.7 — Layered GitHub baselines + PowerShell PascalCase support (May 8, 2026)
+- **Layered GitHub loader** — staged-migration repos that publish updated policies in one folder while keeping the originals in another are now supported. New helper [fetchLayeredGitHubTemplates](src/lib/github-templates.ts) fetches both folders, dedups by `displayName` (vendor prefix stripped, so `IAC - …` and `ACME - …` collapse), and prefers the primary so the *Updated* version wins.
+- **`KnownBaseline.fallbackUrl`** — opting a one-click baseline into the layered loader is now a one-line change in [src/lib/personas.ts](src/lib/personas.ts).
+- **Pre-loaded "Jon Hope — Inforcer baseline (Updated + fallback)" preset** — one-click load of [Jhope188/ConditionalAccessPolicies](https://github.com/Jhope188/ConditionalAccessPolicies) with `Updated/Policies/` (the new two-category guest model: `B2B-Guest` + `Mixed-Guests`) as primary and `Policies/` as fallback for any policy not yet migrated.
+- **PowerShell `ConvertTo-Json` PascalCase exports now parse** — every JSON payload runs through a recursive `normalizeKeys()` pass at ingest, so PascalCase (`DisplayName`, `Conditions`, `GrantControls`, …) and camelCase (Graph) exports work interchangeably. `@odata.*` and `$`-prefixed keys are preserved verbatim.
+- `localStorage["customRepoUrl"]` now stores `{ url, fallbackUrl }` JSON for layered baselines; legacy plain-string values still restore correctly.
+
 ### v1.14.6 — Persona detection: CamelCase + `CA<nnn>` prefix mapping (May 8, 2026)
 - Joey Verlinden-style policy names like `CA300-ServiceAccounts-...`, `CA400-GuestUsers-...`, and `CA501-Agents-...` were landing in the *Unclassified* bucket on the Personas tab.
 - **Root cause 1**: token regexes used `\b` word boundaries, which don't fire on CamelCase joins (`\bguests?\b` does NOT match `GuestUsers` because there's no word boundary between `t` and `U`). Replaced with explicit start/end boundaries that treat any non-alphanumeric character OR an uppercase letter following lowercase as a token break.
@@ -50,12 +57,7 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 - The check is now report-only aware: when a report-only policy covers MFA for All Users, the finding is downgraded from **critical → medium**, retitled "**MFA for All Users exists but is Report-only**", and references the actual policy id/name. Recommendation now reads *"After observing report-only telemetry for 7–14 days with no unexpected blocks, switch this policy to On."*
 - Only fires as critical when **neither enabled nor report-only** coverage exists.
 
-### v1.14.2 — Phishing-resistant MFA detection fix (May 8, 2026)
-- **Zero Trust scorecard** — the *Verify Explicitly → Phishing-resistant MFA in use* signal previously matched only the authentication-strength **displayName** with a regex. Custom strengths like `Modern MFA + TAP` whose `allowedCombinations` *contain* FIDO2 / Windows Hello for Business / x509 certificate MFA were being missed.
-- Detection now resolves the policy's `authenticationStrength.id` against `TenantContext.authStrengthPolicies` and inspects `allowedCombinations` directly, plus matches the well-known built-in **Phishing-resistant MFA** strength id `00000000-0000-0000-0000-000000000004`. Tokens treated as phishing-resistant: `fido2`, `windowsHelloForBusiness`, `x509CertificateMultiFactor`, `x509CertificateSingleFactor`, `deviceBoundPasskey`, `hardwareOath`.
-- Evidence string now names the matching strength so the operator can verify what the engine picked.
-
-See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.14.1 (deployment ZIP bundle), v1.14.0 (Deployment Plans + Persona-aware PPTX), v1.13.0 (Baseline Gap Analysis), v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage) and earlier.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.14.2 (phishing-resistant scorecard fix), v1.14.1 (deployment ZIP bundle), v1.14.0 (Deployment Plans + Persona-aware PPTX), v1.13.0 (Baseline Gap Analysis), v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage) and earlier.
 
 ---
 

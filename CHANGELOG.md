@@ -5,6 +5,20 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.7] - 2026-05-08
+
+### Added
+
+- **Layered GitHub baselines (primary + fallback folder)** — staged-migration repos that publish updated policies in one folder while keeping the original exports in another are now fully supported. The new loader fetches both folders, dedups by `displayName` (with vendor prefix stripped — e.g. `IAC - …` and `ACME - …` collapse), and prefers the primary folder so the *Updated* version always wins.
+  - New helper [fetchLayeredGitHubTemplates](src/lib/github-templates.ts) in `src/lib/github-templates.ts` runs the two fetches in parallel, merges bundles (groups, named locations, migration table), and reports a status string like `Loaded 50 unique policies (38 from primary + 12 fallback + 33 groups + 5 named locations).`
+  - New `KnownBaseline.fallbackUrl` field in [src/lib/personas.ts](src/lib/personas.ts) opts a one-click baseline into the layered loader; the buttons in [src/components/templates-view.tsx](src/components/templates-view.tsx) automatically pass it through.
+  - `localStorage["customRepoUrl"]` now stores `{ url, fallbackUrl }` JSON when a fallback is in play (legacy plain-string values still restore correctly).
+- **Pre-loaded "Jon Hope — Inforcer baseline (Updated + fallback)" preset** — one-click load of [Jhope188/ConditionalAccessPolicies](https://github.com/Jhope188/ConditionalAccessPolicies) with `Updated/Policies/` as primary (newer two-category guest model: `B2B-Guest` + `Mixed-Guests`) and `Policies/` as fallback for any policy not yet migrated.
+
+### Fixed
+
+- **PowerShell PascalCase JSON exports now parse correctly** — `ConvertTo-Json | Out-File` emits `DisplayName`, `Conditions`, `GrantControls`, etc., whereas the Microsoft Graph API uses camelCase. Previously the loader silently classified these as `unknown` and skipped them. The fetch pipeline now runs every JSON payload through a recursive `normalizeKeys()` pass at ingest, so PascalCase and camelCase exports work interchangeably. `@odata.*` and `$`-prefixed keys are preserved verbatim.
+
 ## [1.14.6] - 2026-05-08
 
 ### Fixed
