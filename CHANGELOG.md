@@ -5,6 +5,16 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.4] - 2026-05-08
+
+### Fixed
+
+- **Persona × Control Coverage — `phishing-resistant-mfa` detector** — same root cause as v1.14.2 but in a different code path. The Personas tab and the persona-driven *Critical: Admins missing Phishing-resistant MFA* finding both relied on `hasPhishingResistantMfa()` in [src/lib/persona-coverage.ts](src/lib/persona-coverage.ts), which only inspected the auth-strength **displayName** with a regex. A custom strength named `Modern MFA + TAP` whose `allowedCombinations` are `[windowsHelloForBusiness, fido2, x509CertificateMultiFactor, temporaryAccessPassOneTime, temporaryAccessPassMultiUse]` was misclassified as **Missing** for the Admins persona, and the Admins persona then surfaced a critical "missing Phishing-resistant MFA" finding.
+  - Detector signature changed to `(policy, context?) => boolean` so it can resolve the strength id against `TenantContext.authStrengthPolicies` and inspect `allowedCombinations` directly. Tokens treated as phishing-resistant: `fido2`, `windowsHelloForBusiness`, `x509CertificateMultiFactor`, `x509CertificateSingleFactor`, `deviceBoundPasskey`, `hardwareOath`.
+  - Also matches the well-known built-in **Phishing-resistant MFA** strength id `00000000-0000-0000-0000-000000000004` directly.
+  - The displayName regex (on both the strength and the policy) is kept as a defensive fallback.
+  - `analyzePersonaCoverage()` now threads `context` through to every detector call so future detectors can use catalog data without further refactor.
+
 ## [1.14.3] - 2026-05-08
 
 ### Fixed
