@@ -93,6 +93,62 @@ function isEnabled(p: ConditionalAccessPolicy): boolean {
   return p.state === "enabled";
 }
 
+// Built-in Microsoft authentication strength IDs.
+// Reference: https://learn.microsoft.com/entra/identity/authentication/concept-authentication-strengths#built-in-authentication-strengths
+const BUILTIN_PHISHING_RESISTANT_ID = "00000000-0000-0000-0000-000000000004";
+
+// Authentication-method combinations Microsoft classifies as phishing-resistant.
+// Reference: https://learn.microsoft.com/entra/identity/authentication/concept-authentication-strengths#authentication-method-combinations
+// (Combinations like "fido2", "windowsHelloForBusiness", "x509CertificateMultiFactor",
+// or compound ones such as "federatedMultiFactor,fido2".)
+const PHISHING_RESISTANT_METHOD_TOKENS = [
+  "fido2",
+  "windowshelloforbusiness",
+  "x509certificatemultifactor",
+  "x509certificatesinglefactor",
+  "deviceboundpasskey",
+  "hardwareoath", // hardware OATH tokens (Microsoft now classifies as phishing-resistant when paired)
+];
+
+/**
+ * Resolve whether a CA policy enforces a phishing-resistant authentication
+ * strength. Looks at:
+ *   1. The well-known built-in phishing-resistant strength id.
+ *   2. The display-name of the strength (defensive fallback for older payloads
+ *      where the strength catalog didn't load).
+ *   3. The `allowedCombinations` of the strength resolved from the tenant's
+ *      authentication-strength catalog — this is the authoritative signal and
+ *      what catches custom strengths that *include* FIDO2 / WHfB / cert MFA.
+ */
+function policyUsesPhishingResistant(
+  p: ConditionalAccessPolicy,
+  context: TenantContext
+): boolean {
+  const strength = p.grantControls?.authenticationStrength;
+  if (!strength?.id) return false;
+
+  if (strength.id === BUILTIN_PHISHING_RESISTANT_ID) return true;
+
+  const dn = strength.displayName ?? "";
+  if (/phishing.?resistant|fido2|windows hello|certificate.?based/i.test(dn)) {
+    return true;
+  }
+
+  const resolved = context.authStrengthPolicies?.get(strength.id);
+  const combos = resolved?.allowedCombinations ?? [];
+  for (const combo of combos) {
+    const lc = combo.toLowerCase();
+    // a combo is e.g. "fido2" or "federatedMultiFactor,fido2" — split it and
+    // check each token so partial matches still count.
+    const tokens = lc.split(/[,\s]+/).filter(Boolean);
+    if (tokens.some((t) => PHISHING_RESISTANT_METHOD_TOKENS.includes(t))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function pillarScore(signals: ScorecardSignal[]): number {
   const eligible = signals.filter((s) => s.status !== "n/a");
   if (eligible.length === 0) return 0;
@@ -123,13 +179,13 @@ function buildVerifyExplicitly(
   ).length;
   const mfaScore = Math.round((mfaCount / total) * 100);
 
-  // Signal 2: Phishing-resistant MFA presence (any enabled policy uses an
-  // auth strength matching phishing-resistant patterns).
-  const prCount = enabled.filter((p) =>
-    /phishing.?resistant|fido2|windows hello|certificate.?based/i.test(
-      p.grantControls?.authenticationStrength?.displayName ?? ""
-    )
-  ).length;
+  // Signal 2: Phishing-resistant MFA presence. Resolves the policy's
+  // `authenticationStrength.id` against the tenant's authentication-strength
+  // catalog (`context.authStrengthPolicies`) and inspects `allowedCombinations`
+  // — that's how a custom strength named e.g. "Modern MFA + TAP" that *contains*
+  // FIDO2 / WHfB / x509 cert MFA is correctly recognised as phishing-resistant.
+  const prPolicies = enabled.filter((p) => policyUsesPhishingResistant(p, context));
+  const prCount = prPolicies.length;
   const prScore = prCount > 0 ? Math.min(100, prCount * 50) : 0;
 
   // Signal 3: Compliant device coverage on enabled policies.
@@ -172,12 +228,17 @@ function buildVerifyExplicitly(
     {
       id: "ve-phishing-resistant",
       label: "Phishing-resistant MFA in use",
-      description: "At least one policy uses a phishing-resistant authentication strength.",
+      description:
+        "At least one enabled policy uses an authentication strength whose allowed combinations include FIDO2, Windows Hello for Business, or certificate-based MFA.",
       score: prScore,
       weight: 2,
-      evidence: prCount > 0
-        ? `${prCount} polic${prCount === 1 ? "y" : "ies"} use a phishing-resistant auth strength.`
-        : "No phishing-resistant authentication strength detected on any enabled policy.",
+      evidence:
+        prCount > 0
+          ? `${prCount} polic${prCount === 1 ? "y" : "ies"} use a phishing-resistant auth strength` +
+            (prPolicies[0]?.grantControls?.authenticationStrength?.displayName
+              ? ` (e.g. "${prPolicies[0].grantControls.authenticationStrength.displayName}").`
+              : ".")
+          : "No phishing-resistant authentication strength detected on any enabled policy.",
       status: statusFromScore(prScore),
     },
     {

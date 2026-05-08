@@ -5,6 +5,17 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] - 2026-05-08
+
+### Fixed
+
+- **Zero Trust scorecard — phishing-resistant MFA detection** — the "Phishing-resistant MFA in use" signal under the *Verify Explicitly* pillar previously only matched the `displayName` of the authentication strength against a regex. Custom strengths (e.g. `Modern MFA + TAP`) that **contain** FIDO2 / Windows Hello for Business / x509 certificate MFA combinations were missed even though they are phishing-resistant.
+  - The detection now resolves the policy's `authenticationStrength.id` against the tenant's authentication-strength catalog (`TenantContext.authStrengthPolicies`) and inspects `allowedCombinations` directly. Tokens treated as phishing-resistant: `fido2`, `windowsHelloForBusiness`, `x509CertificateMultiFactor`, `x509CertificateSingleFactor`, `deviceBoundPasskey`, `hardwareOath`.
+  - Also matches the well-known built-in **Phishing-resistant MFA** strength id `00000000-0000-0000-0000-000000000004` directly.
+  - The displayName regex is kept as a defensive fallback for snapshots where the strength catalog hadn't loaded.
+  - Evidence string now names the matching strength, e.g. *"1 policy uses a phishing-resistant auth strength (e.g. \"Modern MFA + TAP\")."*
+- New helper `policyUsesPhishingResistant(policy, context)` in [src/lib/zero-trust-scorecard.ts](src/lib/zero-trust-scorecard.ts).
+
 ## [1.14.1] - 2026-05-08
 
 ### Changed — Phase 5 deployment plan now ships as a ZIP bundle
