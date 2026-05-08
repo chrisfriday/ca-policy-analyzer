@@ -8,7 +8,7 @@ import {
   GapKind,
 } from "@/lib/baseline-gap";
 import { TemplateAnalysisResult } from "@/lib/template-matcher";
-import { buildDeploymentPlan, downloadDeploymentPlan } from "@/lib/deployment-plan";
+import { buildDeploymentPlan, downloadDeploymentBundle } from "@/lib/deployment-plan";
 import {
   GitCompareArrows,
   ChevronDown,
@@ -179,14 +179,14 @@ export function BaselineGapView({ result, baselineLabel, templateResult }: Props
 
   const deployableCount = result.missing + result.drift;
 
-  const handleDownloadPlan = () => {
+  const handleDownloadPlan = async () => {
     if (!templateResult) return;
     const plan = buildDeploymentPlan(
       result,
       templateResult,
       baselineLabel ?? "baseline"
     );
-    downloadDeploymentPlan(plan);
+    await downloadDeploymentBundle(plan);
   };
 
   const toggle = (k: GapKind) => {
@@ -247,7 +247,7 @@ export function BaselineGapView({ result, baselineLabel, templateResult }: Props
                 className="flex items-center gap-1.5 self-start rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20"
               >
                 <Download className="h-3.5 w-3.5" />
-                Download deployment plan ({deployableCount})
+                Download deployment bundle ({deployableCount})
               </button>
             )}
             <div className="text-right">

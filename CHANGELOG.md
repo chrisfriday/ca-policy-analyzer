@@ -5,6 +5,21 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-05-08
+
+### Changed — Phase 5 deployment plan now ships as a ZIP bundle
+
+- The "Download deployment plan" button on the **Baseline Gap** tab now produces a **ZIP bundle** (`ca-deployment-plan-<baseline>-<date>.zip`) instead of a single JSON file. The ZIP contains:
+  - `README.md` — human-readable instructions, ordered by **Zero Trust criticality** (Critical → High → Medium → Low). Within each tier, personas appear in the canonical Zero Trust order from `PERSONA_ORDER` (Global → Admins → Internals → Externals → Guest Admins → Developers → CorpServiceAccounts → WorkloadIdentities). Each policy entry links to its own JSON file on disk.
+  - `deployment-plan.json` — the original machine-readable manifest (unchanged shape, schema v1) — useful for scripted iteration in PowerShell.
+  - `policies/<persona>/<template>.json` — one Graph-ready `ConditionalAccessPolicy` body per file, suitable for direct upload via Graph PowerShell, DCToolbox, `Invoke-MgGraphRequest`, or `curl`.
+- `src/lib/deployment-plan.ts` adds `downloadDeploymentBundle(plan)` which builds the ZIP via [JSZip](https://stuk.github.io/jszip/) and triggers a browser download. The legacy single-file `downloadDeploymentPlan()` is still exported for any consumers that prefer raw JSON, but the UI button no longer uses it.
+- The README inside the bundle bakes in **four auto-import recipes** (Microsoft Graph PowerShell SDK, DCToolbox, `Invoke-MgGraphRequest`, and Bash + curl + jq) so the operator can pick whichever fits their workflow without leaving the bundle.
+- Bundle layout is documented in the README's "Bundle layout" section so the operator can selectively deploy a single persona by importing only that subdirectory.
+
+### Dependencies
+- Add **`jszip ^3.10.1`** for ZIP creation in the browser.
+
 ## [1.14.0] - 2026-05-08
 
 ### Added — Zero Trust Persona Framework — Phases 5 & 6

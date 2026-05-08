@@ -25,6 +25,11 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ## Recent Changes
 
+### v1.14.1 — Deployment plan now ships as a ZIP bundle (May 8, 2026)
+- **"Download deployment bundle"** on the Baseline Gap tab now produces a ZIP with: a Zero Trust criticality-ordered `README.md` (Critical → High → Medium → Low, personas in canonical order within each tier), the original `deployment-plan.json` manifest, and one Graph-ready JSON file per policy at `policies/<persona>/<template>.json`.
+- The bundle README bakes in **four auto-import recipes** (Microsoft Graph PowerShell SDK, DCToolbox, `Invoke-MgGraphRequest`, Bash + curl + jq) so the operator can pick the workflow that matches their environment.
+- Added `jszip` for in-browser ZIP creation; new `downloadDeploymentBundle()` helper in [src/lib/deployment-plan.ts](src/lib/deployment-plan.ts).
+
 ### v1.14.0 — Deployment Plans & Persona-aware PPTX (May 8, 2026)
 - **Phase 5 — Deployment Plan Generator**: new "Download deployment plan" button on the Baseline Gap tab exports every *missing* and *drift* policy as a Graph-ready JSON bundle (full conditions/grantControls/sessionControls bodies, persona-grouped, severity-ranked). All bodies are forced to `state=disabled` for safety. PowerShell + DCToolbox import recipes baked in.
 - **Phase 6 — Persona-aware PowerPoint export**: PPTX now includes new slides between the policy slides and CIS — **Zero Trust Scorecard** (3 pillar cards with top signals), **Persona × Control Coverage summary** (per-persona table), **per-persona detail slides** (one slide per persona showing score badge, control coverage, and that persona's baseline gaps), and **Baseline Gap** summary. The full Zero Trust framework story now flows automatically into the executive deck.
