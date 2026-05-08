@@ -25,6 +25,13 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ## Recent Changes
 
+### v1.13.0 — Baseline Gap Analysis (May 8, 2026)
+- **New Baseline Gap tab** that diffs the live tenant against a loaded Zero Trust baseline (Kenneth / Joey / custom GitHub repo / built-in)
+- Three actionable buckets: **Missing** (baseline has it, tenant doesn’t), **Drift** (both have it but they differ), **Tenant-only** (enabled tenant policies with no baseline equivalent)
+- Every gap is grouped by Zero Trust persona so admins/internals/externals/etc. each get their own card with missing / drift / tenant-only counts
+- Coverage score 0–100 = `(present + 0.5 × partial) / applicable_templates`
+- Toggleable filters, expandable per-entry evidence (closest tenant policy name + concrete differences), severity badges driven by template priority
+
 ### v1.12.0 — Zero Trust Scorecard (May 8, 2026)
 - **New Dashboard widget** scoring the tenant against [Microsoft's three Zero Trust principles](https://learn.microsoft.com/security/zero-trust/zero-trust-overview): **Verify Explicitly**, **Use Least Privilege**, **Assume Breach**
 - 15 weighted signals (5 per pillar) rolled up from existing analyzer + persona-coverage evidence — no extra Graph calls, no double-counting

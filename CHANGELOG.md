@@ -5,6 +5,23 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-05-08
+
+### Added
+- **Zero Trust Persona Framework — Phase 4: Baseline Gap Analysis** — new top-level **Baseline Gap** tab that diffs the live tenant against a *loaded* Zero Trust baseline (Kenneth, Joey, custom GitHub repo, or the built-in template set):
+  - New analyzer [src/lib/baseline-gap.ts](src/lib/baseline-gap.ts) reclassifies the existing `TemplateAnalysisResult` into three actionable buckets:
+    - **Missing** — baseline policy with no tenant equivalent (severity tracks the template priority: critical/recommended/optional → critical/high/medium)
+    - **Drift** — baseline policy is partially matched in the tenant; differences are surfaced inline (closest tenant policy name + every diff the matcher already detected)
+    - **Tenant-only** — enabled tenant policy that doesn’t map to any baseline template (potential custom policy, drift, or coverage gap in the baseline itself)
+  - **Persona-bucketed output** — every gap is grouped by Zero Trust persona using the same `detectPersona` heuristics as Phase 1–3, so the operator sees “Admins is missing 3 baseline policies and has 2 unaccounted-for tenant policies” at a glance
+  - **Coverage score** 0–100 = `(present + 0.5 × partial) / applicable_templates` — a single number that tracks how closely the tenant follows the loaded baseline
+  - New view component [src/components/baseline-gap-view.tsx](src/components/baseline-gap-view.tsx) with toggleable Missing/Drift/Tenant-only filters, persona-grouped expandable cards, severity badges, and per-entry evidence drawers
+  - Lazy-derived via `useMemo` from `(context, templateResult)` — zero extra Graph calls; recomputes automatically when the user loads a different baseline via “Compare Custom Repo”
+  - Tab is hidden until both context and a template result are available, so the surface area only appears when there’s something to diff
+
+### Changed
+- New tab key `baseline` (between `templates` and `cis`) added to `ViewTab`; `lucide-react` `GitCompareArrows` icon used as the tab affordance
+
 ## [1.12.0] - 2026-05-08
 
 ### Added

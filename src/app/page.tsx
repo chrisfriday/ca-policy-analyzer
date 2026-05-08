@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { loadTenantContext, TenantContext } from "@/lib/graph-client";
 import { analyzeAllPolicies, AnalysisResult, calculateCompositeScore, CompositeScoreResult } from "@/lib/analyzer";
@@ -18,11 +18,13 @@ import { PersonaView } from "@/components/persona-view";
 import { analyzeNamedLocations, LocationAnalysisResult } from "@/lib/location-analyzer";
 import { analyzePersonaCoverage, PersonaCoverageResult } from "@/lib/persona-coverage";
 import { buildZeroTrustScorecard, ZeroTrustScorecard } from "@/lib/zero-trust-scorecard";
+import { analyzeBaselineGaps, BaselineGapResult } from "@/lib/baseline-gap";
+import { BaselineGapView } from "@/components/baseline-gap-view";
 import { exportToExcel, exportToPowerPoint, loadDefaultLogo } from "@/lib/export-utils";
-import { Shield, Loader2, Play, Download, RefreshCw, LayoutDashboard, FileText, AlertTriangle, Layers, CheckSquare, BookOpen, FileSpreadsheet, Presentation, MapPin, Users } from "lucide-react";
+import { Shield, Loader2, Play, Download, RefreshCw, LayoutDashboard, FileText, AlertTriangle, Layers, CheckSquare, BookOpen, FileSpreadsheet, Presentation, MapPin, Users, GitCompareArrows } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ViewTab = "dashboard" | "policies" | "findings" | "templates" | "cis" | "locations" | "personas" | "ms-learn";
+type ViewTab = "dashboard" | "policies" | "findings" | "templates" | "baseline" | "cis" | "locations" | "personas" | "ms-learn";
 
 export default function Home() {
   const isAuthenticated = useIsAuthenticated();
@@ -43,6 +45,12 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [hideMicrosoft, setHideMicrosoft] = useState(false);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
+
+  /** Lazy-derived baseline gap report. Recomputes whenever templates or context change. */
+  const baselineGapResult: BaselineGapResult | null = useMemo(() => {
+    if (!context || !templateResult) return null;
+    return analyzeBaselineGaps(context, templateResult);
+  }, [context, templateResult]);
 
   /** Load templates from a custom GitHub repo and re-run template analysis */
   const handleLoadGitHub = useCallback(async (url: string): Promise<string | null> => {
@@ -244,6 +252,7 @@ export default function Home() {
     { key: "policies" as const, label: "Policies", icon: FileText },
     { key: "findings" as const, label: "Findings", icon: AlertTriangle },
     { key: "templates" as const, label: "Templates", icon: Layers },
+    { key: "baseline" as const, label: "Baseline Gap", icon: GitCompareArrows },
     { key: "cis" as const, label: "CIS", icon: CheckSquare },
     { key: "locations" as const, label: "Locations", icon: MapPin },
     { key: "personas" as const, label: "Personas", icon: Users },
@@ -361,6 +370,9 @@ export default function Home() {
       )}
       {activeTab === "templates" && templateResult && (
         <TemplatesView result={templateResult} customRepoDisplay={customRepoDisplay} onLoadGitHub={handleLoadGitHub} onResetTemplates={handleResetTemplates} />
+      )}
+      {activeTab === "baseline" && baselineGapResult && (
+        <BaselineGapView result={baselineGapResult} baselineLabel={customRepoDisplay ?? "built-in template set"} />
       )}
       {activeTab === "cis" && cisResult && (
         <CISView result={cisResult} />
