@@ -20,6 +20,7 @@
  */
 
 import { ConditionalAccessPolicy, TenantContext } from "./graph-client";
+import { policyUsesPhishingResistant } from "./phishing-resistant";
 import {
   Persona,
   PersonaControl,
@@ -198,45 +199,11 @@ function hasNonCorpNetworkBlock(p: ConditionalAccessPolicy): boolean {
   return (excludesTrusted || includesAll) && hasGrantBlock(p);
 }
 
-function hasPhishingResistantMfa(
-  p: ConditionalAccessPolicy,
-  context?: TenantContext
-): boolean {
-  const strength = p.grantControls?.authenticationStrength;
-  if (strength?.id) {
-    // Built-in Microsoft phishing-resistant strength id.
-    if (strength.id === "00000000-0000-0000-0000-000000000004") return true;
-
-    // Display-name signal (defensive fallback for older snapshots).
-    const dn = strength.displayName ?? "";
-    if (/phishing.?resistant|fido2|windows hello|certificate-?based/i.test(dn)) {
-      return true;
-    }
-
-    // Authoritative signal: resolve the strength id against the tenant catalog
-    // and inspect its `allowedCombinations`. Catches custom strengths whose
-    // displayName doesn't include "phishing-resistant" but whose underlying
-    // method combinations are (e.g. "Modern MFA + TAP" → fido2,
-    // windowsHelloForBusiness, x509CertificateMultiFactor).
-    const resolved = context?.authStrengthPolicies?.get(strength.id);
-    const combos = resolved?.allowedCombinations ?? [];
-    const phishingResistantTokens = [
-      "fido2",
-      "windowshelloforbusiness",
-      "x509certificatemultifactor",
-      "x509certificatesinglefactor",
-      "deviceboundpasskey",
-      "hardwareoath",
-    ];
-    for (const combo of combos) {
-      const tokens = combo.toLowerCase().split(/[,\s]+/).filter(Boolean);
-      if (tokens.some((t) => phishingResistantTokens.includes(t))) return true;
-    }
-  }
-
-  // Display-name fallback for baselines that name the policy explicitly.
-  return /phishing.?resistant/i.test(p.displayName);
-}
+// Phishing-resistant detection lives in src/lib/phishing-resistant.ts so the
+// scorecard, persona coverage, and the per-policy analyzer all share a single
+// authoritative implementation that inspects allowedCombinations from the
+// tenant authentication-strength catalog.
+const hasPhishingResistantMfa = policyUsesPhishingResistant;
 
 function hasHighRiskAppBlock(p: ConditionalAccessPolicy): boolean {
   if (!hasGrantBlock(p)) return false;

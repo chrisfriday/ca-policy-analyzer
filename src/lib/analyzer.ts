@@ -30,6 +30,7 @@ import {
   ExclusionFinding,
 } from "@/data/known-exclusions";
 import { ADMIN_ROLE_IDS } from "@/data/policy-templates";
+import { policyUsesPhishingResistant } from "./phishing-resistant";
 
 // ─── Finding Types ───────────────────────────────────────────────────────────
 
@@ -152,8 +153,8 @@ export function analyzeAllPolicies(context: TenantContext): AnalysisResult {
       ...checkPrivilegedRoleExclusions(policy, context),
       ...checkGuestExternalUserExclusions(policy, context),
       ...checkCredentialRegistrationConstraints(policy, context),
-      ...checkGuestAuthenticationStrength(policy),
-      ...checkProtectedActions(policy),
+      ...checkGuestAuthenticationStrength(policy, context),
+      ...checkProtectedActions(policy, context),
       ...checkBreakGlassPerPolicy(policy, breakGlass, context)
     );
 
@@ -1406,7 +1407,8 @@ function checkMicrosoftManagedPolicy(
  * Reference: https://learn.microsoft.com/entra/external-id/authentication-conditional-access
  */
 function checkGuestAuthenticationStrength(
-  policy: ConditionalAccessPolicy
+  policy: ConditionalAccessPolicy,
+  context: TenantContext
 ): Finding[] {
   const findings: Finding[] = [];
 
@@ -1437,14 +1439,13 @@ function checkGuestAuthenticationStrength(
   let requiresCrossTenantTrust = true;
 
   if (requiresAuthStrength) {
-    const authStrengthId = grant.authenticationStrength?.id || "";
     const authStrengthName = grant.authenticationStrength?.displayName || "Unknown";
-    
-    // Check if it's phishing-resistant (most restrictive)
-    if (
-      authStrengthName.toLowerCase().includes("phishing-resistant") ||
-      authStrengthName.toLowerCase().includes("phishing resistant")
-    ) {
+
+    // Phishing-resistant detection now reads allowedCombinations from the
+    // tenant authentication-strength catalog, so custom strengths whose
+    // displayName doesn't say "phishing-resistant" but whose underlying
+    // methods are (FIDO2 / WHfB / x509) are still classified correctly.
+    if (policyUsesPhishingResistant(policy, context)) {
       severity = "high";
       strengthType = "Phishing-resistant MFA";
     } else {
@@ -1547,7 +1548,8 @@ function checkGuestAuthenticationStrength(
  * Reference: https://learn.microsoft.com/entra/identity/conditional-access/how-to-policy-protected-actions
  */
 function checkProtectedActions(
-  policy: ConditionalAccessPolicy
+  policy: ConditionalAccessPolicy,
+  context: TenantContext
 ): Finding[] {
   const findings: Finding[] = [];
 
@@ -1645,9 +1647,10 @@ function checkProtectedActions(
   // CHECK: Phishing-resistant MFA recommendation for Protected Actions
   if (usesAuthStrength && grant?.authenticationStrength) {
     const authStrengthName = grant.authenticationStrength.displayName || "";
-    const isPhishingResistant = 
-      authStrengthName.toLowerCase().includes("phishing-resistant") ||
-      authStrengthName.toLowerCase().includes("phishing resistant");
+    // Reads allowedCombinations from the tenant authentication-strength
+    // catalog so custom strengths that include FIDO2 / WHfB / x509 cert MFA
+    // are correctly classified as phishing-resistant.
+    const isPhishingResistant = policyUsesPhishingResistant(policy, context);
 
     if (!isPhishingResistant) {
       findings.push({

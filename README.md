@@ -27,6 +27,18 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 > Only the **5 most recent releases** are summarized here. Full version history lives in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.14.5 — Phishing-resistant detection unified across all surfaces (May 8, 2026)
+- Extracted phishing-resistant detection into a single shared helper [src/lib/phishing-resistant.ts](src/lib/phishing-resistant.ts) so the **Zero Trust scorecard**, the **Persona × Control matrix**, and the per-policy analyzer findings (**Guest Authentication Strength**, **Protected Actions**) all use the same authoritative implementation.
+- Two additional displayName-only checks were converted to use the shared helper:
+  - `checkGuestAuthenticationStrength()` — guest auth-strength severity classification (Phishing-resistant MFA → high vs other strengths → medium) was matching the displayName regex only. A custom strength like `Modern MFA + TAP` would have been downgraded to medium even though it enforces FIDO2.
+  - `checkProtectedActions()` — the "consider phishing-resistant MFA" advisory finding for Protected Actions policies similarly missed custom strengths whose `allowedCombinations` are phishing-resistant. The advisory will no longer fire against policies that already enforce FIDO2 / WHfB / x509 cert MFA via a custom strength.
+- All four call sites now resolve `authenticationStrength.id` against `TenantContext.authStrengthPolicies` and inspect `allowedCombinations` for the canonical tokens `fido2`, `windowsHelloForBusiness`, `x509CertificateMultiFactor`, `x509CertificateSingleFactor`, `deviceBoundPasskey`, `hardwareOath`. Built-in strength id `00000000-0000-0000-0000-000000000004` matches directly; displayName regex retained as a defensive fallback.
+
+### v1.14.4 — Phishing-resistant detector fix in Persona × Control coverage (May 8, 2026)
+- **Persona × Control Coverage — `phishing-resistant-mfa` detector** — same root cause as v1.14.2 but in a different code path. The Personas tab and the persona-driven *Critical: Admins missing Phishing-resistant MFA* finding both relied on `hasPhishingResistantMfa()` in [src/lib/persona-coverage.ts](src/lib/persona-coverage.ts), which only inspected the auth-strength **displayName** with a regex.
+- Detector signature changed to `(policy, context?) => boolean` so it can resolve the strength id against `TenantContext.authStrengthPolicies` and inspect `allowedCombinations` directly.
+- `analyzePersonaCoverage()` threads `context` through to every detector call so future detectors can use catalog data without further refactor.
+
 ### v1.14.3 — Report-only-aware MFA-for-all-users finding (May 8, 2026)
 - **Tenant-wide MFA Coverage check** — previously this finding fired as *critical* ("No policy requires MFA for All Users") whenever no **enabled** policy targeted All Users with MFA, even if a fully-formed **report-only** policy already covered the case. The message read "No enabled policy was found..." which felt wrong to operators who *did* have such a policy in report-only mode.
 - The check is now report-only aware: when a report-only policy covers MFA for All Users, the finding is downgraded from **critical → medium**, retitled "**MFA for All Users exists but is Report-only**", and references the actual policy id/name. Recommendation now reads *"After observing report-only telemetry for 7–14 days with no unexpected blocks, switch this policy to On."*
@@ -42,18 +54,7 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 - The bundle README bakes in **four auto-import recipes** (Microsoft Graph PowerShell SDK, DCToolbox, `Invoke-MgGraphRequest`, Bash + curl + jq) so the operator can pick the workflow that matches their environment.
 - Added `jszip` for in-browser ZIP creation; new `downloadDeploymentBundle()` helper in [src/lib/deployment-plan.ts](src/lib/deployment-plan.ts).
 
-### v1.14.0 — Deployment Plans & Persona-aware PPTX (May 8, 2026)
-- **Phase 5 — Deployment Plan Generator**: new "Download deployment plan" button on the Baseline Gap tab exports every *missing* and *drift* policy as a Graph-ready JSON bundle (full conditions/grantControls/sessionControls bodies, persona-grouped, severity-ranked). All bodies are forced to `state=disabled` for safety. PowerShell + DCToolbox import recipes baked in.
-- **Phase 6 — Persona-aware PowerPoint export**: PPTX now includes new slides between the policy slides and CIS — **Zero Trust Scorecard** (3 pillar cards with top signals), **Persona × Control Coverage summary** (per-persona table), **per-persona detail slides** (one slide per persona showing score badge, control coverage, and that persona's baseline gaps), and **Baseline Gap** summary. The full Zero Trust framework story now flows automatically into the executive deck.
-
-### v1.13.0 — Baseline Gap Analysis (May 8, 2026)
-- **New Baseline Gap tab** that diffs the live tenant against a loaded Zero Trust baseline (Kenneth / Joey / custom GitHub repo / built-in)
-- Three actionable buckets: **Missing** (baseline has it, tenant doesn't), **Drift** (both have it but they differ), **Tenant-only** (enabled tenant policies with no baseline equivalent)
-- Every gap is grouped by Zero Trust persona so admins/internals/externals/etc. each get their own card with missing / drift / tenant-only counts
-- Coverage score 0–100 = `(present + 0.5 × partial) / applicable_templates`
-- Toggleable filters, expandable per-entry evidence (closest tenant policy name + concrete differences), severity badges driven by template priority
-
-See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage), v1.10.0 (Zero Trust Persona Framework), v1.9.0 (Custom GitHub Template Comparison) and earlier.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.14.0 (Deployment Plans + Persona-aware PPTX), v1.13.0 (Baseline Gap Analysis), v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage), v1.10.0 (Zero Trust Persona Framework) and earlier.
 
 ---
 

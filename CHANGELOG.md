@@ -5,6 +5,17 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.5] - 2026-05-08
+
+### Changed
+
+- **Phishing-resistant detection unified across all surfaces** — extracted the detection logic into a single shared module [src/lib/phishing-resistant.ts](src/lib/phishing-resistant.ts) so the Zero Trust scorecard, the Persona × Control matrix, and the per-policy analyzer findings (Guest Authentication Strength, Protected Actions) all use the same authoritative implementation.
+  - Two additional displayName-only checks were converted to use the shared helper:
+    - `checkGuestAuthenticationStrength()` — guest auth-strength severity classification (Phishing-resistant MFA → high vs other strengths → medium) previously matched only the displayName regex `phishing-resistant`. A custom strength like `Modern MFA + TAP` would have been downgraded to medium even though it enforces FIDO2.
+    - `checkProtectedActions()` — the "consider phishing-resistant MFA" advisory finding for Protected Actions policies similarly missed custom strengths whose `allowedCombinations` are phishing-resistant. The advisory will no longer fire against policies that already enforce FIDO2 / WHfB / x509 cert MFA via a custom strength.
+  - Both checks now resolve `authenticationStrength.id` against `TenantContext.authStrengthPolicies` and inspect `allowedCombinations` for the canonical tokens `fido2`, `windowsHelloForBusiness`, `x509CertificateMultiFactor`, `x509CertificateSingleFactor`, `deviceBoundPasskey`, `hardwareOath`.
+  - The shared helper also matches the well-known built-in strength id `00000000-0000-0000-0000-000000000004` directly and retains the displayName regex as a defensive fallback for the case where the strength catalog isn't available.
+
 ## [1.14.4] - 2026-05-08
 
 ### Fixed

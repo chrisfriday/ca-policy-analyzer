@@ -24,6 +24,7 @@
 import { AnalysisResult, Finding, Severity } from "./analyzer";
 import { PersonaCoverageResult } from "./persona-coverage";
 import { TenantContext, ConditionalAccessPolicy } from "./graph-client";
+import { policyUsesPhishingResistant } from "./phishing-resistant";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -91,62 +92,6 @@ function statusFromScore(score: number): ScorecardSignal["status"] {
 
 function isEnabled(p: ConditionalAccessPolicy): boolean {
   return p.state === "enabled";
-}
-
-// Built-in Microsoft authentication strength IDs.
-// Reference: https://learn.microsoft.com/entra/identity/authentication/concept-authentication-strengths#built-in-authentication-strengths
-const BUILTIN_PHISHING_RESISTANT_ID = "00000000-0000-0000-0000-000000000004";
-
-// Authentication-method combinations Microsoft classifies as phishing-resistant.
-// Reference: https://learn.microsoft.com/entra/identity/authentication/concept-authentication-strengths#authentication-method-combinations
-// (Combinations like "fido2", "windowsHelloForBusiness", "x509CertificateMultiFactor",
-// or compound ones such as "federatedMultiFactor,fido2".)
-const PHISHING_RESISTANT_METHOD_TOKENS = [
-  "fido2",
-  "windowshelloforbusiness",
-  "x509certificatemultifactor",
-  "x509certificatesinglefactor",
-  "deviceboundpasskey",
-  "hardwareoath", // hardware OATH tokens (Microsoft now classifies as phishing-resistant when paired)
-];
-
-/**
- * Resolve whether a CA policy enforces a phishing-resistant authentication
- * strength. Looks at:
- *   1. The well-known built-in phishing-resistant strength id.
- *   2. The display-name of the strength (defensive fallback for older payloads
- *      where the strength catalog didn't load).
- *   3. The `allowedCombinations` of the strength resolved from the tenant's
- *      authentication-strength catalog — this is the authoritative signal and
- *      what catches custom strengths that *include* FIDO2 / WHfB / cert MFA.
- */
-function policyUsesPhishingResistant(
-  p: ConditionalAccessPolicy,
-  context: TenantContext
-): boolean {
-  const strength = p.grantControls?.authenticationStrength;
-  if (!strength?.id) return false;
-
-  if (strength.id === BUILTIN_PHISHING_RESISTANT_ID) return true;
-
-  const dn = strength.displayName ?? "";
-  if (/phishing.?resistant|fido2|windows hello|certificate.?based/i.test(dn)) {
-    return true;
-  }
-
-  const resolved = context.authStrengthPolicies?.get(strength.id);
-  const combos = resolved?.allowedCombinations ?? [];
-  for (const combo of combos) {
-    const lc = combo.toLowerCase();
-    // a combo is e.g. "fido2" or "federatedMultiFactor,fido2" — split it and
-    // check each token so partial matches still count.
-    const tokens = lc.split(/[,\s]+/).filter(Boolean);
-    if (tokens.some((t) => PHISHING_RESISTANT_METHOD_TOKENS.includes(t))) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 function pillarScore(signals: ScorecardSignal[]): number {
