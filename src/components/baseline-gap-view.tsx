@@ -7,6 +7,8 @@ import {
   PersonaGapBucket,
   GapKind,
 } from "@/lib/baseline-gap";
+import { TemplateAnalysisResult } from "@/lib/template-matcher";
+import { buildDeploymentPlan, downloadDeploymentPlan } from "@/lib/deployment-plan";
 import {
   GitCompareArrows,
   ChevronDown,
@@ -14,12 +16,14 @@ import {
   AlertOctagon,
   GitBranch,
   PackageOpen,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
   result: BaselineGapResult;
   baselineLabel?: string | null;
+  templateResult?: TemplateAnalysisResult | null;
 }
 
 const KIND_META: Record<
@@ -168,10 +172,22 @@ function PersonaBucketCard({
   );
 }
 
-export function BaselineGapView({ result, baselineLabel }: Props) {
+export function BaselineGapView({ result, baselineLabel, templateResult }: Props) {
   const [active, setActive] = useState<Set<GapKind>>(
     new Set<GapKind>(["missing", "drift", "tenant-only"])
   );
+
+  const deployableCount = result.missing + result.drift;
+
+  const handleDownloadPlan = () => {
+    if (!templateResult) return;
+    const plan = buildDeploymentPlan(
+      result,
+      templateResult,
+      baselineLabel ?? "baseline"
+    );
+    downloadDeploymentPlan(plan);
+  };
 
   const toggle = (k: GapKind) => {
     const next = new Set(active);
@@ -223,12 +239,24 @@ export function BaselineGapView({ result, baselineLabel }: Props) {
               an enabled tenant policy with no baseline equivalent.
             </p>
           </div>
-          <div className="text-right">
-            <div className={cn("text-3xl font-bold tabular-nums", coverageColor)}>
-              {result.coverageScore}
-            </div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-500">
-              Baseline coverage
+          <div className="flex items-start gap-3">
+            {templateResult && deployableCount > 0 && (
+              <button
+                onClick={handleDownloadPlan}
+                title="Download Graph-ready deployment plan (JSON)"
+                className="flex items-center gap-1.5 self-start rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download deployment plan ({deployableCount})
+              </button>
+            )}
+            <div className="text-right">
+              <div className={cn("text-3xl font-bold tabular-nums", coverageColor)}>
+                {result.coverageScore}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">
+                Baseline coverage
+              </div>
             </div>
           </div>
         </div>

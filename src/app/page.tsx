@@ -20,11 +20,13 @@ import { analyzePersonaCoverage, PersonaCoverageResult } from "@/lib/persona-cov
 import { buildZeroTrustScorecard, ZeroTrustScorecard } from "@/lib/zero-trust-scorecard";
 import { analyzeBaselineGaps, BaselineGapResult } from "@/lib/baseline-gap";
 import { BaselineGapView } from "@/components/baseline-gap-view";
+import { captureSnapshot, loadStoredSnapshot, saveSnapshot, diffSnapshots, SnapshotDiff } from "@/lib/snapshot-diff";
+import { SnapshotDiffView } from "@/components/snapshot-diff-view";
 import { exportToExcel, exportToPowerPoint, loadDefaultLogo } from "@/lib/export-utils";
-import { Shield, Loader2, Play, Download, RefreshCw, LayoutDashboard, FileText, AlertTriangle, Layers, CheckSquare, BookOpen, FileSpreadsheet, Presentation, MapPin, Users, GitCompareArrows } from "lucide-react";
+import { Shield, Loader2, Play, Download, RefreshCw, LayoutDashboard, FileText, AlertTriangle, Layers, CheckSquare, BookOpen, FileSpreadsheet, Presentation, MapPin, Users, GitCompareArrows, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ViewTab = "dashboard" | "policies" | "findings" | "templates" | "baseline" | "cis" | "locations" | "personas" | "ms-learn";
+type ViewTab = "dashboard" | "policies" | "findings" | "templates" | "baseline" | "cis" | "locations" | "personas" | "changes" | "ms-learn";
 
 export default function Home() {
   const isAuthenticated = useIsAuthenticated();
@@ -41,6 +43,7 @@ export default function Home() {
   const [scorecard, setScorecard] = useState<ZeroTrustScorecard | null>(null);
   const [compositeScore, setCompositeScore] = useState<CompositeScoreResult | null>(null);
   const [locationResult, setLocationResult] = useState<LocationAnalysisResult | null>(null);
+  const [snapshotDiff, setSnapshotDiff] = useState<SnapshotDiff | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>("dashboard");
   const [error, setError] = useState<string | null>(null);
   const [hideMicrosoft, setHideMicrosoft] = useState(false);
@@ -87,8 +90,8 @@ export default function Home() {
       setResult(analysisResult);
 
       setProgress("Matching against policy templates…");
-      const templates = analyzeTemplates(ctx);
-      setTemplateResult(templates);
+      let activeTemplates = analyzeTemplates(ctx);
+      setTemplateResult(activeTemplates);
 
       // Restore custom repo from previous session if saved
       const savedRepoUrl = localStorage.getItem("customRepoUrl");
@@ -96,8 +99,8 @@ export default function Home() {
         setProgress("Restoring custom repo templates…");
         const custom = await fetchGitHubTemplates(savedRepoUrl);
         if (custom.templates.length > 0) {
-          const customResult = analyzeTemplates(ctx, custom.templates);
-          setTemplateResult(customResult);
+          activeTemplates = analyzeTemplates(ctx, custom.templates);
+          setTemplateResult(activeTemplates);
           setCustomRepoDisplay(custom.repoDisplay);
         } else {
           localStorage.removeItem("customRepoUrl");
@@ -126,7 +129,7 @@ export default function Home() {
       }
 
       setProgress("Computing security posture score…");
-      const composite = calculateCompositeScore(analysisResult, cis, templates);
+      const composite = calculateCompositeScore(analysisResult, cis, activeTemplates);
       setCompositeScore(composite);
 
       setProgress("Scoring against Zero Trust pillars…");
@@ -136,6 +139,20 @@ export default function Home() {
           : analysisResult;
       const zt = buildZeroTrustScorecard(ctx, mergedForScorecard, persona);
       setScorecard(zt);
+
+      setProgress("Comparing against previous snapshot…");
+      const baselineGap = analyzeBaselineGaps(ctx, activeTemplates);
+      const previousSnapshot = loadStoredSnapshot(ctx.tenantId);
+      const currentSnapshot = captureSnapshot({
+        context: ctx,
+        analysis: persona.findings.length > 0 ? { ...analysisResult, findings: [...analysisResult.findings, ...persona.findings] } : analysisResult,
+        cis,
+        composite,
+        scorecard: zt,
+        baselineGap,
+      });
+      setSnapshotDiff(diffSnapshots(previousSnapshot, currentSnapshot));
+      saveSnapshot(currentSnapshot);
 
       setActiveTab("dashboard");
     } catch (e: unknown) {
@@ -256,6 +273,7 @@ export default function Home() {
     { key: "cis" as const, label: "CIS", icon: CheckSquare },
     { key: "locations" as const, label: "Locations", icon: MapPin },
     { key: "personas" as const, label: "Personas", icon: Users },
+    { key: "changes" as const, label: "Changes", icon: History },
     { key: "ms-learn" as const, label: "MS Learn", icon: BookOpen },
   ];
 
@@ -349,6 +367,9 @@ export default function Home() {
                 tenantDisplayName: tenantName,
                 tenantId,
                 resolverMaps: context ? { directoryObjects: context.directoryObjects, servicePrincipals: context.servicePrincipals } : undefined,
+                personaResult,
+                scorecard,
+                baselineGap: baselineGapResult,
               });
             }}
             title="Export PowerPoint"
@@ -372,7 +393,7 @@ export default function Home() {
         <TemplatesView result={templateResult} customRepoDisplay={customRepoDisplay} onLoadGitHub={handleLoadGitHub} onResetTemplates={handleResetTemplates} />
       )}
       {activeTab === "baseline" && baselineGapResult && (
-        <BaselineGapView result={baselineGapResult} baselineLabel={customRepoDisplay ?? "built-in template set"} />
+        <BaselineGapView result={baselineGapResult} baselineLabel={customRepoDisplay ?? "built-in template set"} templateResult={templateResult} />
       )}
       {activeTab === "cis" && cisResult && (
         <CISView result={cisResult} />
@@ -383,7 +404,11 @@ export default function Home() {
       {activeTab === "personas" && personaResult && (
         <PersonaView result={personaResult} />
       )}
+      {activeTab === "changes" && snapshotDiff && (
+        <SnapshotDiffView diff={snapshotDiff} />
+      )}
       {activeTab === "ms-learn" && result && (
+
         <ExclusionsView findings={result.exclusionFindings} />
       )}
     </div>

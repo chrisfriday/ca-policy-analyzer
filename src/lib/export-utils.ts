@@ -14,6 +14,10 @@ import {
 } from "./analyzer";
 import { CISAlignmentResult } from "@/data/cis-benchmarks";
 import { resolveRoleList, resolveGuidList, resolveAppList, type GuidResolverMaps } from "@/lib/role-names";
+import type { PersonaCoverageResult } from "./persona-coverage";
+import type { ZeroTrustScorecard } from "./zero-trust-scorecard";
+import type { BaselineGapResult } from "./baseline-gap";
+import { PERSONA_META } from "./personas";
 
 // ─── Export Options ──────────────────────────────────────────────────────────
 
@@ -275,7 +279,11 @@ export async function exportToPowerPoint(
   analysis: AnalysisResult,
   cisResult?: CISAlignmentResult | null,
   compositeScore?: CompositeScoreResult | null,
-  options?: ExportOptions,
+  options?: ExportOptions & {
+    personaResult?: PersonaCoverageResult | null;
+    scorecard?: ZeroTrustScorecard | null;
+    baselineGap?: BaselineGapResult | null;
+  },
 ) {
   const pptx = new PptxGenJS();
 
@@ -532,6 +540,21 @@ export async function exportToPowerPoint(
   // ── Slide 3+: Policy Detail Slides (one per policy) ────────────────
   for (const pr of policyResults) {
     addPolicySlide(pptx, pr, options?.resolverMaps);
+  }
+
+  // ── Zero Trust Scorecard ───────────────────────────────────────────
+  if (options?.scorecard) {
+    addScorecardSlide(pptx, options.scorecard);
+  }
+
+  // ── Persona × Control Coverage ─────────────────────────────────────
+  if (options?.personaResult) {
+    addPersonaCoverageSlide(pptx, options.personaResult);
+  }
+
+  // ── Baseline Gap Summary ───────────────────────────────────────────
+  if (options?.baselineGap) {
+    addBaselineGapSlide(pptx, options.baselineGap);
   }
 
   // ── Slide N: CIS Alignment ──────────────────────────────────────────
@@ -867,3 +890,192 @@ function downloadBlob(blob: Blob, filename: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ─── Phase 6: Persona / Scorecard / Baseline-gap PowerPoint slides ──────────
+
+function pillarColor(score: number): string {
+  if (score >= 80) return COLORS.green;
+  if (score >= 50) return COLORS.yellow;
+  return COLORS.red;
+}
+
+function addScorecardSlide(pptx: PptxGenJS, sc: ZeroTrustScorecard) {
+  const slide = pptx.addSlide();
+  slide.background = { color: COLORS.bg };
+
+  slide.addText("Zero Trust Scorecard", {
+    x: 0.5, y: 0.3, w: 12, h: 0.6,
+    fontSize: 24, fontFace: "Arial", color: COLORS.white, bold: true,
+  });
+  slide.addText(`Overall: ${sc.overall}/100  •  Verify Explicitly · Use Least Privilege · Assume Breach`, {
+    x: 0.5, y: 0.95, w: 12, h: 0.35,
+    fontSize: 12, fontFace: "Arial", color: COLORS.muted,
+  });
+
+  const startX = 0.5;
+  const startY = 1.6;
+  const cardW = 4.1;
+  const cardH = 5.3;
+  const gap = 0.25;
+
+  sc.pillars.forEach((p, i) => {
+    const x = startX + i * (cardW + gap);
+    // Card background
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x, y: startY, w: cardW, h: cardH,
+      fill: { color: COLORS.card },
+      line: { color: COLORS.muted, width: 0.5 },
+      rectRadius: 0.1,
+    });
+    // Pillar header
+    slide.addText(p.label, {
+      x: x + 0.2, y: startY + 0.15, w: cardW - 0.4, h: 0.4,
+      fontSize: 14, fontFace: "Arial", color: COLORS.white, bold: true,
+    });
+    // Score
+    slide.addText(String(p.score), {
+      x: x + 0.2, y: startY + 0.6, w: cardW - 0.4, h: 0.9,
+      fontSize: 48, fontFace: "Arial", color: pillarColor(p.score), bold: true,
+    });
+    slide.addText("/ 100", {
+      x: x + 0.2, y: startY + 1.55, w: cardW - 0.4, h: 0.3,
+      fontSize: 10, fontFace: "Arial", color: COLORS.muted,
+    });
+    // Signals list (truncated)
+    const signalRows = p.signals.slice(0, 5).map((s) => ({
+      text: [
+        { text: `${s.label}  `, options: { color: COLORS.text, bold: true, fontSize: 10 } },
+        { text: s.status === "n/a" ? "n/a" : `${s.score}`, options: { color: pillarColor(s.score), fontSize: 10, bold: true } },
+        { text: `\n${s.evidence}`, options: { color: COLORS.muted, fontSize: 8 } },
+      ],
+    }));
+    signalRows.forEach((row, j) => {
+      slide.addText(row.text, {
+        x: x + 0.2, y: startY + 2.1 + j * 0.6, w: cardW - 0.4, h: 0.55,
+        fontFace: "Arial",
+      });
+    });
+  });
+}
+
+function addPersonaCoverageSlide(pptx: PptxGenJS, pr: PersonaCoverageResult) {
+  const slide = pptx.addSlide();
+  slide.background = { color: COLORS.bg };
+
+  slide.addText("Persona × Control Coverage", {
+    x: 0.5, y: 0.3, w: 12, h: 0.6,
+    fontSize: 24, fontFace: "Arial", color: COLORS.white, bold: true,
+  });
+  slide.addText(`Overall coverage: ${pr.overallScore}/100  •  ${pr.totalCovered}/${pr.totalExpected} expected controls implemented`, {
+    x: 0.5, y: 0.95, w: 12, h: 0.35,
+    fontSize: 12, fontFace: "Arial", color: COLORS.muted,
+  });
+
+  // Filter to personas the tenant actually has policies for
+  const rows = pr.rows.filter((r) => r.assignedPolicies.length > 0);
+  if (rows.length === 0) {
+    slide.addText("No personas detected in this tenant.", {
+      x: 0.5, y: 2, w: 12, h: 0.5,
+      fontSize: 14, fontFace: "Arial", color: COLORS.muted,
+    });
+    return;
+  }
+
+  // Header row
+  const tableRows: PptxGenJS.TableRow[] = [
+    [
+      { text: "Persona", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      { text: "Policies", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      { text: "Score", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      { text: "Present", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      { text: "Partial", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      { text: "Missing", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+    ],
+  ];
+
+  for (const row of rows) {
+    const meta = PERSONA_META[row.persona];
+    const present = row.controls.filter((c) => c.status === "present").length;
+    const partial = row.controls.filter((c) => c.status === "partial").length;
+    const missing = row.controls.filter((c) => c.status === "missing").length;
+    tableRows.push([
+      { text: meta.label, options: { color: COLORS.text } },
+      { text: String(row.assignedPolicies.length), options: { color: COLORS.muted, align: "center" } },
+      { text: `${row.score}`, options: { color: pillarColor(row.score), bold: true, align: "center" } },
+      { text: String(present), options: { color: COLORS.green, align: "center" } },
+      { text: String(partial), options: { color: COLORS.yellow, align: "center" } },
+      { text: String(missing), options: { color: COLORS.red, align: "center" } },
+    ]);
+  }
+
+  slide.addTable(tableRows, {
+    x: 0.5, y: 1.5, w: 12,
+    colW: [3.2, 1.6, 1.4, 1.9, 1.9, 2.0],
+    fontSize: 11, fontFace: "Arial",
+    border: { type: "solid", color: COLORS.muted, pt: 0.25 },
+    fill: { color: COLORS.bg },
+  });
+}
+
+function addBaselineGapSlide(pptx: PptxGenJS, gap: BaselineGapResult) {
+  const slide = pptx.addSlide();
+  slide.background = { color: COLORS.bg };
+
+  slide.addText("Baseline Gap Analysis", {
+    x: 0.5, y: 0.3, w: 12, h: 0.6,
+    fontSize: 24, fontFace: "Arial", color: COLORS.white, bold: true,
+  });
+  slide.addText(`Coverage: ${gap.coverageScore}/100  •  ${gap.baselineTemplateCount} baseline templates  •  ${gap.tenantPolicyCount} tenant policies`, {
+    x: 0.5, y: 0.95, w: 12, h: 0.35,
+    fontSize: 12, fontFace: "Arial", color: COLORS.muted,
+  });
+
+  // Top stats row
+  const stats = [
+    { label: "Missing", value: gap.missing, color: COLORS.red },
+    { label: "Drift", value: gap.drift, color: COLORS.yellow },
+    { label: "Tenant-only", value: gap.tenantOnly, color: COLORS.accent },
+    { label: "Coverage", value: `${gap.coverageScore}%`, color: pillarColor(gap.coverageScore) },
+  ];
+  stats.forEach((s, i) => {
+    const x = 0.8 + i * 3.0;
+    slide.addText(String(s.value), {
+      x, y: 1.5, w: 2.2, h: 0.7,
+      fontSize: 36, fontFace: "Arial", color: s.color, bold: true, align: "center",
+    });
+    slide.addText(s.label, {
+      x, y: 2.2, w: 2.2, h: 0.3,
+      fontSize: 11, fontFace: "Arial", color: COLORS.muted, align: "center",
+    });
+  });
+
+  // Per-persona table
+  if (gap.buckets.length > 0) {
+    const tableRows: PptxGenJS.TableRow[] = [
+      [
+        { text: "Persona", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+        { text: "Missing", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+        { text: "Drift", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+        { text: "Tenant-only", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+        { text: "Total", options: { bold: true, color: COLORS.white, fill: { color: COLORS.card } } },
+      ],
+    ];
+    for (const b of gap.buckets) {
+      tableRows.push([
+        { text: b.label, options: { color: COLORS.text } },
+        { text: String(b.missingCount), options: { color: b.missingCount > 0 ? COLORS.red : COLORS.muted, align: "center" } },
+        { text: String(b.driftCount), options: { color: b.driftCount > 0 ? COLORS.yellow : COLORS.muted, align: "center" } },
+        { text: String(b.tenantOnlyCount), options: { color: b.tenantOnlyCount > 0 ? COLORS.accent : COLORS.muted, align: "center" } },
+        { text: String(b.entries.length), options: { color: COLORS.text, align: "center", bold: true } },
+      ]);
+    }
+    slide.addTable(tableRows, {
+      x: 0.5, y: 3.0, w: 12,
+      colW: [4.0, 2.0, 2.0, 2.0, 2.0],
+      fontSize: 11, fontFace: "Arial",
+      border: { type: "solid", color: COLORS.muted, pt: 0.25 },
+      fill: { color: COLORS.bg },
+    });
+  }
+}
+

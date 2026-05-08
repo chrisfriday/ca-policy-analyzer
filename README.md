@@ -25,6 +25,11 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 ## Recent Changes
 
+### v1.14.0 — Deployment Plans, Persona-aware PPTX & Snapshot Diff (May 8, 2026)
+- **Phase 5 — Deployment Plan Generator**: new "Download deployment plan" button on the Baseline Gap tab exports every *missing* and *drift* policy as a Graph-ready JSON bundle (full conditions/grantControls/sessionControls bodies, persona-grouped, severity-ranked). All bodies are forced to `state=disabled` for safety. PowerShell + DCToolbox import recipes baked in.
+- **Phase 6 — Persona-aware PowerPoint export**: PPTX now includes three new slides between the policy slides and CIS — **Zero Trust Scorecard** (3 pillar cards with top signals), **Persona × Control Coverage** (per-persona table), and **Baseline Gap** (missing/drift stats + per-persona breakdown). The full Zero Trust framework story now flows automatically into the executive deck.
+- **Phase 7 — Tenant Snapshot Diff**: new top-level **Changes** tab compares the current run to a localStorage-persisted snapshot of the previous run on the same tenant. Surfaces added / modified / removed policies (with structured field-level diffs), score deltas across all four metrics, and per-severity finding deltas. Zero extra Graph calls — comparison is fully client-side.
+
 ### v1.13.0 — Baseline Gap Analysis (May 8, 2026)
 - **New Baseline Gap tab** that diffs the live tenant against a loaded Zero Trust baseline (Kenneth / Joey / custom GitHub repo / built-in)
 - Three actionable buckets: **Missing** (baseline has it, tenant doesn’t), **Drift** (both have it but they differ), **Tenant-only** (enabled tenant policies with no baseline equivalent)

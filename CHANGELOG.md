@@ -5,6 +5,45 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-05-08
+
+### Added — Zero Trust Persona Framework — Phases 5, 6 & 7
+
+#### Phase 5 — Deployment Plan Generator
+- New module [src/lib/deployment-plan.ts](src/lib/deployment-plan.ts) converts the **Baseline Gap** report into a Graph-ready import bundle:
+  - `buildDeploymentPlan(gaps, templateResult, baselineLabel)` — emits a `DeploymentPlan` (schemaVersion 1) containing every *missing* and *drift* entry with the template's full `deploymentJson` body (conditions / grantControls / sessionControls), the originating persona, severity, and the reason for inclusion
+  - **Every body's `state` is forced to `disabled`** before write — operators must explicitly enable each policy in their tenant after review
+  - Bundles built-in **PowerShell + DCToolbox import recipes** in `PLAN_INSTRUCTIONS` so the JSON is self-documenting
+  - `deploymentPlanToFileMap(plan)` produces a `{path: content}` map ready for future ZIP packaging (`deployment-plan.json`, `README.md`, `policies/<persona>/<id>.json`)
+  - Tenant-only entries are skipped (nothing to deploy from a custom tenant policy back into a baseline)
+- **"Download deployment plan"** button added to [src/components/baseline-gap-view.tsx](src/components/baseline-gap-view.tsx) — visible only when both a template result is loaded and at least one missing/drift entry exists; clicking exports a single JSON via `Blob` + `URL.createObjectURL`
+
+#### Phase 6 — Persona-aware PowerPoint export
+- [src/lib/export-utils.ts](src/lib/export-utils.ts) `exportToPowerPoint` now accepts optional `personaResult`, `scorecard`, and `baselineGap` arguments and inserts three new slides between the policy slides and the CIS slide:
+  - **Zero Trust Scorecard slide** — three rounded-rect pillar cards (Verify Explicitly / Least Privilege / Assume Breach) with the pillar score color-coded (green ≥80, yellow ≥50, red <50) and the top 5 signals listed underneath each pillar with score + evidence
+  - **Persona × Control Coverage slide** — table of every persona that has at least one assigned policy with columns *Persona / Policies / Score / Present / Partial / Missing*
+  - **Baseline Gap slide** — top stat row (Missing / Drift / Tenant-only / Coverage %) plus per-persona table *Persona / Missing / Drift / Tenant-only / Total*
+- The full Zero Trust framework story (pillars → personas → baseline gap) now flows through to the executive deck without any additional clicks
+- Wired into [src/app/page.tsx](src/app/page.tsx) PPTX export call so all three slides appear automatically when the data is available
+
+#### Phase 7 — Tenant Snapshot Diff ("What changed since last analysis")
+- New analyzer [src/lib/snapshot-diff.ts](src/lib/snapshot-diff.ts) persists a slim snapshot per tenant to localStorage and diffs the current run against the previous one:
+  - Storage slot keyed `ca-snapshot:<tenantId>` (schemaVersion 2) — one snapshot kept per tenant; new run replaces previous after diff is computed
+  - Snapshot contains policy `shape` (stable hash of state, app/user/group/role include & exclude scopes, sign-in & user risk, client-app types, grant operator + builtInControls + authenticationStrength, session controls), human-readable summary, all four scores (overall / CIS / Zero Trust / baseline coverage), and finding counts per severity
+  - `diffSnapshots(previous, current)` returns:
+    - **Added** policies (in current, not in previous)
+    - **Removed** policies (in previous, not in current)
+    - **Modified** policies — diffed via `describeShapeChange` which emits up to 6 `key: before → after` strings derived from the structured shape hash
+    - **Score deltas** for all four metrics (Overall / CIS / Zero Trust / Baseline coverage)
+    - **Finding deltas** by severity (critical / high / medium / low / info) — color-inverted because *fewer* findings is better
+- New view component [src/components/snapshot-diff-view.tsx](src/components/snapshot-diff-view.tsx) — score-delta header row, per-severity finding-delta strip, three collapsible sections (Added / Modified / Removed) with expandable per-policy change lists; first-run empty state explains "this tab will populate next time you run an analysis"
+- New top-level **Changes** tab (lucide `History` icon, between *Personas* and *MS Learn*) wired into [src/app/page.tsx](src/app/page.tsx)
+- Snapshot capture runs at the **end** of `runAnalysis` after the Zero Trust scorecard is computed — zero extra Graph calls, all comparison work is local
+
+### Changed
+- `runAnalysis` in [src/app/page.tsx](src/app/page.tsx) now tracks the active template result in a local `activeTemplates` variable so subsequent analysis steps (composite scoring, baseline gap, snapshot capture) consume the most recent template set without waiting for React state to flush
+- `BaselineGapView` accepts a new optional `templateResult` prop; the deployment-plan download button only appears when this prop is supplied
+
 ## [1.13.0] - 2026-05-08
 
 ### Added
