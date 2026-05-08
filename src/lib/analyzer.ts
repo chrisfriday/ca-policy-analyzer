@@ -1191,8 +1191,9 @@ function checkGuestExternalUserExclusions(
         : `Create a dedicated CA policy for guest/external users with appropriate controls, or ` +
           `remove the guest exclusion from this policy. Per CIS and Microsoft Zero Trust guidance, ` +
           `guest accounts should be subject to at least MFA and ideally session time restrictions. ` +
-          `If guests must be excluded from this specific policy, create a companion policy like ` +
-          `"GLOBAL - GRANT - MFA - GuestsExternal" to ensure coverage. ` +
+          `If guests must be excluded from this specific policy, create companion policies like ` +
+          `"GLOBAL - GRANT - MFA - B2B-Guest" (for internalGuest, b2bCollaborationMember, b2bDirectConnectUser, serviceProvider) and ` +
+          `"GLOBAL - GRANT - MFA - Mixed-Guests" (for b2bCollaborationGuest, otherExternalUser) to ensure coverage. ` +
           `**For B2B Collaboration guests (b2bCollaborationGuest, b2bCollaborationMember):** Enable MFA trust in ` +
           `Cross-Tenant Access Settings to require guests complete MFA in their home tenant before accessing your resources. ` +
           `**For B2B Direct Connect users:** These users authenticate in their home tenant only — your CA policies do NOT apply. ` +

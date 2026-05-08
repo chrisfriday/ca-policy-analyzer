@@ -481,15 +481,30 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
   // ═══════════════════════════════════════════════════════════════════════
   // BASELINE POLICIES
   // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Two-category guest model (replaces the legacy single
+  // "External-Guest-Users" template). Microsoft's external-user types split
+  // naturally into two operational buckets that often warrant different
+  // controls in production:
+  //
+  //   1. B2B-Guest — first-party B2B partners + service providers we control
+  //      (internalGuest, b2bCollaborationMember, b2bDirectConnectUser,
+  //      serviceProvider).
+  //   2. Mixed-Guests — invited collaboration guests + ad-hoc external users
+  //      (b2bCollaborationGuest, otherExternalUser).
+  //
+  // Together these cover all six external-user types. Splitting them lets
+  // ops apply different auth-strength / session policies per bucket while
+  // still requiring MFA across the board.
   {
-    id: "baseline-mfa-guests",
-    displayName: "GLOBAL - GRANT - MFA - External-Guest-Users",
+    id: "baseline-mfa-b2b-guest",
+    displayName: "GLOBAL - GRANT - MFA - B2B-Guest",
     category: "baseline",
     controlType: "GRANT",
     priority: "recommended",
-    summary: "Require MFA for all external/guest users",
+    summary: "Require MFA for B2B partners and service providers",
     rationale:
-      "Guest accounts have access to your tenant resources but are controlled by external identity providers. Always require MFA to ensure a baseline level of assurance.",
+      "First-party B2B collaboration members, direct-connect users, internal guests and trusted service providers all access tenant resources via federated identity. Always require MFA — these accounts often have elevated standing access to specific apps and should never be exempted.",
     cisControls: ["6.2.2"],
     fingerprint: {
       includeApps: ["All"],
@@ -497,7 +512,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
       targetsGuests: true,
     },
     deploymentJson: {
-      displayName: "YOURORG - GLOBAL - GRANT - MFA - External-Guest-Users",
+      displayName: "YOURORG - GLOBAL - GRANT - MFA - B2B-Guest",
       state: "disabled",
       conditions: {
         users: {
@@ -509,7 +524,54 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
           excludeRoles: [],
           includeGuestsOrExternalUsers: {
             guestOrExternalUserTypes:
-              "internalGuest,b2bCollaborationGuest,b2bCollaborationMember,b2bDirectConnectUser,otherExternalUser,serviceProvider",
+              "internalGuest,b2bCollaborationMember,b2bDirectConnectUser,serviceProvider",
+            externalTenants: {
+              membershipKind: "all",
+            },
+          },
+        },
+        applications: {
+          includeApplications: ["All"],
+          excludeApplications: [],
+          includeUserActions: [],
+        },
+        clientAppTypes: ["all"],
+      },
+      grantControls: {
+        operator: "OR",
+        builtInControls: ["mfa"],
+      },
+    },
+  },
+  {
+    id: "baseline-mfa-mixed-guests",
+    displayName: "GLOBAL - GRANT - MFA - Mixed-Guests",
+    category: "baseline",
+    controlType: "GRANT",
+    priority: "recommended",
+    summary: "Require MFA for invited collaboration guests and ad-hoc external users",
+    rationale:
+      "B2B collaboration guests (invite-redemption guests) and otherExternalUser identities are the highest-churn external population — they redeem invites from many home tenants you don't control. Requiring MFA on every sign-in keeps the assurance level consistent regardless of the home tenant's security posture.",
+    cisControls: ["6.2.2"],
+    fingerprint: {
+      includeApps: ["All"],
+      grantControls: ["mfa"],
+      targetsGuests: true,
+    },
+    deploymentJson: {
+      displayName: "YOURORG - GLOBAL - GRANT - MFA - Mixed-Guests",
+      state: "disabled",
+      conditions: {
+        users: {
+          includeUsers: [],
+          excludeUsers: [],
+          includeGroups: [],
+          excludeGroups: [],
+          includeRoles: [],
+          excludeRoles: [],
+          includeGuestsOrExternalUsers: {
+            guestOrExternalUserTypes:
+              "b2bCollaborationGuest,otherExternalUser",
             externalTenants: {
               membershipKind: "all",
             },

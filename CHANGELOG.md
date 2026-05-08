@@ -5,6 +5,20 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.8] - 2026-05-08
+
+### Changed
+
+- **Built-in guest baseline split into two templates** — the legacy `baseline-mfa-guests` template (single `GLOBAL - GRANT - MFA - External-Guest-Users` covering all six external user types in one policy) was collapsing two distinct tenant policies into one entry. Replaced with two purpose-built templates that match Microsoft's two operational guest buckets:
+  - **`baseline-mfa-b2b-guest`** — `GLOBAL - GRANT - MFA - B2B-Guest` covers `internalGuest, b2bCollaborationMember, b2bDirectConnectUser, serviceProvider` (first-party B2B partners + trusted service providers).
+  - **`baseline-mfa-mixed-guests`** — `GLOBAL - GRANT - MFA - Mixed-Guests` covers `b2bCollaborationGuest, otherExternalUser` (invited collaboration guests + ad-hoc external identities).
+- Together they still cover all six external user types but allow ops to apply different auth-strength / session controls per bucket. The `deploymentJson` for each template now matches the corresponding policy in [Jhope188/ConditionalAccessPolicies/Updated/Policies](https://github.com/Jhope188/ConditionalAccessPolicies/tree/main/Updated/Policies).
+- Updated the analyzer's compensating-policy recommendation to reference both new template names instead of the retired `GuestsExternal` name.
+
+### Note
+
+- For the layered Inforcer baseline (Jon Hope preset shipped in v1.14.7) the JSON download already pulls each policy from `Updated/Policies/` first and falls back to `Policies/` when no Updated version exists — that's the layered fetcher's contract from v1.14.7. No further change required for custom-template downloads.
+
 ## [1.14.7] - 2026-05-08
 
 ### Added

@@ -27,6 +27,14 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 
 > Only the **5 most recent releases** are summarized here. Full version history lives in [CHANGELOG.md](CHANGELOG.md).
 
+### v1.14.8 — Built-in guest baseline split into B2B-Guest + Mixed-Guests (May 8, 2026)
+- **Two-template guest model** — replaced the legacy single `External-Guest-Users` template (which collapsed all six external user types into one entry) with two purpose-built templates that match Microsoft's two operational guest buckets:
+  - `GLOBAL - GRANT - MFA - B2B-Guest` covers `internalGuest, b2bCollaborationMember, b2bDirectConnectUser, serviceProvider` (first-party B2B partners + trusted service providers).
+  - `GLOBAL - GRANT - MFA - Mixed-Guests` covers `b2bCollaborationGuest, otherExternalUser` (invited collaboration guests + ad-hoc external identities).
+- Coverage stays at all six external user types; ops can now apply different auth-strength / session controls per bucket without one tenant policy collapsing two template entries on the Templates view.
+- Compensating-policy recommendation in [src/lib/analyzer.ts](src/lib/analyzer.ts) updated to reference both new template names instead of the retired `GuestsExternal` name.
+- The deploymentJson for each new template matches the corresponding policy in [Jhope188/ConditionalAccessPolicies/Updated/Policies](https://github.com/Jhope188/ConditionalAccessPolicies/tree/main/Updated/Policies). The layered loader from v1.14.7 already pulls custom-template downloads from `Updated/Policies/` first with `Policies/` as fallback.
+
 ### v1.14.7 — Layered GitHub baselines + PowerShell PascalCase support (May 8, 2026)
 - **Layered GitHub loader** — staged-migration repos that publish updated policies in one folder while keeping the originals in another are now supported. New helper [fetchLayeredGitHubTemplates](src/lib/github-templates.ts) fetches both folders, dedups by `displayName` (vendor prefix stripped, so `IAC - …` and `ACME - …` collapse), and prefers the primary so the *Updated* version wins.
 - **`KnownBaseline.fallbackUrl`** — opting a one-click baseline into the layered loader is now a one-line change in [src/lib/personas.ts](src/lib/personas.ts).
@@ -52,12 +60,7 @@ The app runs **100% in your browser** — your data never leaves your machine. I
 - Detector signature changed to `(policy, context?) => boolean` so it can resolve the strength id against `TenantContext.authStrengthPolicies` and inspect `allowedCombinations` directly.
 - `analyzePersonaCoverage()` threads `context` through to every detector call so future detectors can use catalog data without further refactor.
 
-### v1.14.3 — Report-only-aware MFA-for-all-users finding (May 8, 2026)
-- **Tenant-wide MFA Coverage check** — previously this finding fired as *critical* ("No policy requires MFA for All Users") whenever no **enabled** policy targeted All Users with MFA, even if a fully-formed **report-only** policy already covered the case. The message read "No enabled policy was found..." which felt wrong to operators who *did* have such a policy in report-only mode.
-- The check is now report-only aware: when a report-only policy covers MFA for All Users, the finding is downgraded from **critical → medium**, retitled "**MFA for All Users exists but is Report-only**", and references the actual policy id/name. Recommendation now reads *"After observing report-only telemetry for 7–14 days with no unexpected blocks, switch this policy to On."*
-- Only fires as critical when **neither enabled nor report-only** coverage exists.
-
-See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.14.2 (phishing-resistant scorecard fix), v1.14.1 (deployment ZIP bundle), v1.14.0 (Deployment Plans + Persona-aware PPTX), v1.13.0 (Baseline Gap Analysis), v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage) and earlier.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history including v1.14.3 (report-only-aware MFA finding), v1.14.2 (phishing-resistant scorecard fix), v1.14.1 (deployment ZIP bundle), v1.14.0 (Deployment Plans + Persona-aware PPTX), v1.13.0 (Baseline Gap Analysis), v1.12.0 (Zero Trust Scorecard), v1.11.0 (Persona × Control Coverage) and earlier.
 
 ---
 
