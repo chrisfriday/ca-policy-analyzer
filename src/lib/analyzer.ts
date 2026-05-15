@@ -149,7 +149,7 @@ export function analyzeAllPolicies(context: TenantContext): AnalysisResult {
       ...checkMicrosoftManagedPolicy(policy),
       ...checkPrivilegedRoleExclusions(policy, context),
       ...checkGuestExternalUserExclusions(policy, context),
-      ...checkCredentialRegistrationConstraints(policy),
+      ...checkCredentialRegistrationConstraints(policy, context),
       ...checkGuestAuthenticationStrength(policy, context),
       ...checkProtectedActions(policy, context),
       ...checkBreakGlassPerPolicy(policy, breakGlass, context)
@@ -1199,7 +1199,8 @@ function checkGuestExternalUserExclusions(
 // and macOS Platform SSO"
 
 function checkCredentialRegistrationConstraints(
-  policy: ConditionalAccessPolicy
+  policy: ConditionalAccessPolicy,
+  context: TenantContext
 ): Finding[] {
   const findings: Finding[] = [];
 

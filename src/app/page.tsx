@@ -394,6 +394,7 @@ export default function Home() {
     accounts[0]?.username?.split("@")[1] ??
     "Unknown";
   const tenantId = context?.tenantId ?? accounts[0]?.tenantId ?? "";
+  if (!result) return null;
 
   return (
     <div className="space-y-6">
