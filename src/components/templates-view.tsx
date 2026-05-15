@@ -797,6 +797,9 @@ export function TemplatesView({
               Enter a public GitHub repo containing CA policy JSON exports (Graph API format).
               The tool will auto-detect JSON files in the root or common subdirectories (Policies/, policies/, CA/).
             </p>
+            <p className="text-xs text-gray-600">
+              Safety limits apply: max crawl depth 4, max 400 JSON files, max 15MB total downloaded template content.
+            </p>
             {loadError && (
               <p className="text-xs text-red-400">{loadError}</p>
             )}

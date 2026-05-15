@@ -327,7 +327,6 @@ export const APP_DESCRIPTION_MAP = new Map<string, AppDescription>(
  */
 export function getAppDescription(
   appId: string,
-  fallbackName?: string,
 ): { purpose: string; commonExclusionReason: string; exclusionRisk: string } | null {
   return APP_DESCRIPTION_MAP.get(appId.toLowerCase()) ?? null;
 }

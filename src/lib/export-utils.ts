@@ -5,7 +5,7 @@
  * and a summary sheet into .xlsx or .pptx format.
  */
 
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import PptxGenJS from "pptxgenjs";
 import {
   AnalysisResult,
@@ -106,8 +106,6 @@ export function exportToExcel(
   compositeScore?: CompositeScoreResult | null,
   options?: ExportOptions,
 ) {
-  const wb = XLSX.utils.book_new();
-
   // Filter policies if Microsoft-managed are hidden
   const policyResults = options?.hideMicrosoftPolicies
     ? analysis.policyResults.filter((r) => !isMicrosoftManaged(r))
@@ -148,9 +146,13 @@ export function exportToExcel(
     );
   }
 
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-  wsSummary["!cols"] = [{ wch: 25 }, { wch: 30 }];
-  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "CA Policy Analyzer";
+  wb.created = new Date();
+
+  const wsSummary = wb.addWorksheet("Summary");
+  summaryData.forEach((row) => wsSummary.addRow(row));
+  wsSummary.columns = [{ width: 25 }, { width: 30 }];
 
   // ── Sheet 2: All Policies ───────────────────────────────────────────
   const maps = options?.resolverMaps;
@@ -180,12 +182,19 @@ export function exportToExcel(
     Modified: r.policy.modifiedDateTime?.slice(0, 10) ?? "",
   }));
 
-  const wsPolicies = XLSX.utils.json_to_sheet(policyRows);
-  wsPolicies["!cols"] = [
-    { wch: 50 }, { wch: 12 }, { wch: 25 }, { wch: 25 },
-    { wch: 30 }, { wch: 30 }, { wch: 30 },
-  ];
-  XLSX.utils.book_append_sheet(wb, wsPolicies, "Policies");
+  const wsPolicies = wb.addWorksheet("Policies");
+  if (policyRows.length > 0) {
+    const policyColumns = Object.keys(policyRows[0]).map((key) => ({ header: key, key }));
+    wsPolicies.columns = policyColumns;
+    policyRows.forEach((row) => wsPolicies.addRow(row));
+  }
+  wsPolicies.getColumn(1).width = 50;
+  wsPolicies.getColumn(2).width = 12;
+  wsPolicies.getColumn(3).width = 25;
+  wsPolicies.getColumn(4).width = 25;
+  wsPolicies.getColumn(5).width = 30;
+  wsPolicies.getColumn(6).width = 30;
+  wsPolicies.getColumn(7).width = 30;
 
   // ── Sheet 3: All Findings ───────────────────────────────────────────
   const findingRows = analysis.findings.map((f) => ({
@@ -198,12 +207,19 @@ export function exportToExcel(
     Recommendation: f.recommendation,
   }));
 
-  const wsFindings = XLSX.utils.json_to_sheet(findingRows);
-  wsFindings["!cols"] = [
-    { wch: 8 }, { wch: 10 }, { wch: 25 }, { wch: 50 },
-    { wch: 60 }, { wch: 80 }, { wch: 60 },
-  ];
-  XLSX.utils.book_append_sheet(wb, wsFindings, "Findings");
+  const wsFindings = wb.addWorksheet("Findings");
+  if (findingRows.length > 0) {
+    const findingColumns = Object.keys(findingRows[0]).map((key) => ({ header: key, key }));
+    wsFindings.columns = findingColumns;
+    findingRows.forEach((row) => wsFindings.addRow(row));
+  }
+  wsFindings.getColumn(1).width = 8;
+  wsFindings.getColumn(2).width = 10;
+  wsFindings.getColumn(3).width = 25;
+  wsFindings.getColumn(4).width = 50;
+  wsFindings.getColumn(5).width = 60;
+  wsFindings.getColumn(6).width = 80;
+  wsFindings.getColumn(7).width = 60;
 
   // ── Sheet 4: CIS Alignment ─────────────────────────────────────────
   if (cisResult) {
@@ -217,20 +233,33 @@ export function exportToExcel(
       Remediation: cr.result.remediation ?? "",
     }));
 
-    const wsCIS = XLSX.utils.json_to_sheet(cisRows);
-    wsCIS["!cols"] = [
-      { wch: 10 }, { wch: 60 }, { wch: 6 }, { wch: 10 },
-      { wch: 60 }, { wch: 40 }, { wch: 60 },
-    ];
-    XLSX.utils.book_append_sheet(wb, wsCIS, "CIS Alignment");
+    const wsCIS = wb.addWorksheet("CIS Alignment");
+    if (cisRows.length > 0) {
+      const cisColumns = Object.keys(cisRows[0]).map((key) => ({ header: key, key }));
+      wsCIS.columns = cisColumns;
+      cisRows.forEach((row) => wsCIS.addRow(row));
+    }
+    wsCIS.getColumn(1).width = 10;
+    wsCIS.getColumn(2).width = 60;
+    wsCIS.getColumn(3).width = 6;
+    wsCIS.getColumn(4).width = 10;
+    wsCIS.getColumn(5).width = 60;
+    wsCIS.getColumn(6).width = 40;
+    wsCIS.getColumn(7).width = 60;
   }
 
   // ── Download ────────────────────────────────────────────────────────
-  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  downloadBlob(
-    new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-    `ca-analysis-${datestamp()}.xlsx`,
-  );
+  void wb.xlsx
+    .writeBuffer()
+    .then((buf) => {
+      downloadBlob(
+        new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        `ca-analysis-${datestamp()}.xlsx`,
+      );
+    })
+    .catch((e) => {
+      console.error("Excel export failed:", e);
+    });
 }
 
 // ─── PowerPoint Export ───────────────────────────────────────────────────────
@@ -1295,4 +1324,3 @@ function addPersonaDetailSlide(
     }
   }
 }
-

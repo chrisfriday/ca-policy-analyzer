@@ -10,15 +10,12 @@
 
 import {
   ConditionalAccessPolicy,
-  NamedLocation,
-  ServicePrincipal,
   TenantContext,
 } from "./graph-client";
 import { CISAlignmentResult } from "@/data/cis-benchmarks";
 import { TemplateAnalysisResult } from "./template-matcher";
 import { isFociApp, getFociApp, getFociFamily } from "@/data/foci-families";
 import {
-  CA_IMMUNE_RESOURCE_MAP,
   RESOURCE_EXCLUSION_BYPASSES,
   DEVICE_REGISTRATION_RESOURCE,
   WELL_KNOWN_APP_MAP,
@@ -135,9 +132,9 @@ export function analyzeAllPolicies(context: TenantContext): AnalysisResult {
 
     // Run all checks
     policyFindings.push(
-      ...checkFociExclusions(policy, context),
-      ...checkResourceExclusion(policy, context),
-      ...checkCAImmuneResources(policy),
+      ...checkFociExclusions(policy),
+      ...checkResourceExclusion(policy),
+      ...checkCAImmuneResources(),
       ...checkGrantControlOperator(policy),
       ...checkDeviceRegistrationBypass(policy),
       ...checkServicePrincipalExclusions(policy, context),
@@ -147,12 +144,12 @@ export function analyzeAllPolicies(context: TenantContext): AnalysisResult {
       ...checkSessionControls(policy),
       ...checkLocationConditions(policy, context),
       ...checkLegacyAuth(policy),
-      ...checkCABypassApps(policy, context),
+      ...checkCABypassApps(),
       ...checkUserAgentBypass(policy),
       ...checkMicrosoftManagedPolicy(policy),
       ...checkPrivilegedRoleExclusions(policy, context),
       ...checkGuestExternalUserExclusions(policy, context),
-      ...checkCredentialRegistrationConstraints(policy, context),
+      ...checkCredentialRegistrationConstraints(policy),
       ...checkGuestAuthenticationStrength(policy, context),
       ...checkProtectedActions(policy, context),
       ...checkBreakGlassPerPolicy(policy, breakGlass, context)
@@ -201,8 +198,7 @@ export function analyzeAllPolicies(context: TenantContext): AnalysisResult {
 // ─── Check: FOCI Family Exclusions ───────────────────────────────────────────
 
 function checkFociExclusions(
-  policy: ConditionalAccessPolicy,
-  context: TenantContext
+  policy: ConditionalAccessPolicy
 ): Finding[] {
   const findings: Finding[] = [];
   const excluded = policy.conditions.applications.excludeApplications;
@@ -238,8 +234,7 @@ function checkFociExclusions(
 // ─── Check: Resource Exclusion — Low-Privilege Scope Enforcement (March 2026) ─
 
 function checkResourceExclusion(
-  policy: ConditionalAccessPolicy,
-  _context: TenantContext
+  policy: ConditionalAccessPolicy
 ): Finding[] {
   const findings: Finding[] = [];
   const apps = policy.conditions.applications;
@@ -322,9 +317,7 @@ function checkResourceExclusion(
 // ─── Check: CA-Immune Resources ──────────────────────────────────────────────
 // Moved to tenant-wide check — no longer fires per-policy
 
-function checkCAImmuneResources(
-  _policy: ConditionalAccessPolicy
-): Finding[] {
+function checkCAImmuneResources(): Finding[] {
   return [];
 }
 
@@ -747,10 +740,7 @@ function checkLegacyAuth(policy: ConditionalAccessPolicy): Finding[] {
 // ─── Check: Known CA Bypass Apps ─────────────────────────────────────────────
 
 // checkCABypassApps is now consolidated into checkServicePrincipalExclusions
-function checkCABypassApps(
-  _policy: ConditionalAccessPolicy,
-  _context: TenantContext
-): Finding[] {
+function checkCABypassApps(): Finding[] {
   return []; // Bypass app info is now included in the consolidated App Exclusion finding
 }
 
@@ -928,9 +918,6 @@ function checkPrivilegedRoleExclusions(
   const requiresMfa =
     grant?.builtInControls.includes("mfa") ||
     grant?.authenticationStrength != null;
-  const requiresCompliance =
-    grant?.builtInControls.includes("compliantDevice") ||
-    grant?.builtInControls.includes("domainJoinedDevice");
   const blocks = grant?.builtInControls.includes("block");
 
   // Targeting security info registration is especially dangerous
@@ -1065,9 +1052,6 @@ function checkGuestExternalUserExclusions(
   const grant = policy.grantControls;
   const requiresMfa =
     grant?.builtInControls.includes("mfa") || grant?.authenticationStrength != null;
-  const requiresCompliance =
-    grant?.builtInControls.includes("compliantDevice") ||
-    grant?.builtInControls.includes("domainJoinedDevice");
   const blocks = grant?.builtInControls.includes("block");
 
   const targetsSecurityRegistration = policy.conditions.applications
@@ -1215,8 +1199,7 @@ function checkGuestExternalUserExclusions(
 // and macOS Platform SSO"
 
 function checkCredentialRegistrationConstraints(
-  policy: ConditionalAccessPolicy,
-  context: TenantContext
+  policy: ConditionalAccessPolicy
 ): Finding[] {
   const findings: Finding[] = [];
 
@@ -1229,7 +1212,6 @@ function checkCredentialRegistrationConstraints(
   if (!targetsSecurityRegistration) return findings;
 
   const grant = policy.grantControls;
-  const session = policy.sessionControls;
   const conditions = policy.conditions;
 
   // Check for constraints that may be problematic during initial device setup
@@ -1437,7 +1419,6 @@ function checkGuestAuthenticationStrength(
   // Determine severity and messaging based on authentication strength type
   let severity: Severity = "high";
   let strengthType = "MFA";
-  let requiresCrossTenantTrust = true;
 
   if (requiresAuthStrength) {
     const authStrengthName = grant.authenticationStrength?.displayName || "Unknown";
@@ -1458,7 +1439,9 @@ function checkGuestAuthenticationStrength(
   // Determine guest user types being targeted
   const guestTypes: string[] = [];
   if (users.includeGuestsOrExternalUsers) {
-    const guestConfig = users.includeGuestsOrExternalUsers as any;
+    const guestConfig = users.includeGuestsOrExternalUsers as {
+      guestOrExternalUserTypes?: string;
+    };
     const guestTypeString = guestConfig.guestOrExternalUserTypes || "";
     
     if (guestTypeString.includes("b2bCollaborationGuest")) {
@@ -2345,12 +2328,16 @@ function checkTenantWideGaps(context: TenantContext): Finding[] {
 
   // Check for Identity Protection / Risk-based Conditional Access
   const hasUserRiskPolicy = enabled.some((p) => {
-    const conditions = p.conditions as any;
+    const conditions = p.conditions as {
+      userRiskLevels?: string[];
+    };
     return conditions.userRiskLevels && conditions.userRiskLevels.length > 0;
   });
 
   const hasSignInRiskPolicy = enabled.some((p) => {
-    const conditions = p.conditions as any;
+    const conditions = p.conditions as {
+      signInRiskLevels?: string[];
+    };
     return conditions.signInRiskLevels && conditions.signInRiskLevels.length > 0;
   });
 
@@ -2514,7 +2501,6 @@ function checkTenantWideGaps(context: TenantContext): Finding[] {
 
   if (unprotectedHighValueApps.length > 0) {
     const criticalApps = unprotectedHighValueApps.filter((a) => a.risk === "critical");
-    const highApps = unprotectedHighValueApps.filter((a) => a.risk === "high");
 
     findings.push({
       id: nextFindingId(),

@@ -1,19 +1,31 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useMsal, useIsAuthenticated } from "@azure/msal-react";
-import { loginRequest } from "@/lib/msal-config";
-import { LogIn, LogOut, Shield, User } from "lucide-react";
+import { LogOut, Shield, User, HardDrive } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Header() {
   const { instance, accounts } = useMsal();
   const isAuthenticated = useIsAuthenticated();
+  const [appMode, setAppMode] = useState<"offline" | "live" | null>(null);
 
-  const handleLogin = () => {
-    instance.loginRedirect(loginRequest).catch((e) => {
-      console.error("Login failed:", e);
-    });
-  };
+  useEffect(() => {
+    const readMode = () => {
+      const mode = localStorage.getItem("caAnalyzerMode");
+      setAppMode(mode === "offline" || mode === "live" ? mode : null);
+    };
+    readMode();
+
+    const onStorage = () => readMode();
+    const onModeEvent = () => readMode();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("ca-analyzer-mode", onModeEvent as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("ca-analyzer-mode", onModeEvent as EventListener);
+    };
+  }, []);
 
   const handleLogout = () => {
     instance.logoutRedirect({ postLogoutRedirectUri: "/" });
@@ -65,17 +77,18 @@ export default function Header() {
                 <span className="hidden sm:inline">Disconnect</span>
               </button>
             </div>
-          ) : (
-            <button
-              onClick={handleLogin}
+          ) : appMode === "offline" ? (
+            <div
               className={cn(
                 "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium",
-                "bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                "bg-gray-800 text-gray-200"
               )}
             >
-              <LogIn className="h-4 w-4" />
-              Connect Tenant
-            </button>
+              <HardDrive className="h-4 w-4" />
+              Offline mode
+            </div>
+          ) : (
+            <></>
           )}
         </div>
       </div>

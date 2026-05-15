@@ -6,11 +6,6 @@ import {
   CISControlResult,
   CISStatus,
   CISLevel,
-  NearMissPolicy,
-  MSLearnReference,
-  Advisory,
-  PrerequisiteSection,
-  PrerequisiteStep,
 } from "@/data/cis-benchmarks";
 import { ScoreRing, Card } from "./ui-primitives";
 import {

@@ -9,7 +9,6 @@
 import {
   PolicyTemplate,
   TemplateFingerprint,
-  TemplateCategory,
   TemplatePriority,
   DeploymentPolicy,
 } from "@/data/policy-templates";
@@ -22,6 +21,17 @@ interface GitHubFile {
   download_url: string;
   type: "file" | "dir";
 }
+
+interface FetchJsonLimits {
+  maxDepth: number;
+  maxFiles: number;
+}
+
+const GITHUB_FETCH_LIMITS: FetchJsonLimits = {
+  maxDepth: 4,
+  maxFiles: 400,
+};
+const MAX_TEMPLATE_TOTAL_BYTES = 15 * 1024 * 1024; // 15MB
 
 export interface BaselineBundle {
   /** Policy-exclusion / break-glass / service-account groups (id → displayName). */
@@ -225,8 +235,16 @@ async function fetchJsonFiles(
   owner: string,
   repo: string,
   path: string,
-  branch: string
+  branch: string,
+  depth = 0,
+  limits: FetchJsonLimits = GITHUB_FETCH_LIMITS
 ): Promise<{ files: GitHubFile[]; error?: string }> {
+  if (depth > limits.maxDepth) {
+    return {
+      files: [],
+      error: `Repository traversal exceeded safe depth (${limits.maxDepth}). Narrow the path and try again.`,
+    };
+  }
   // First try the GitHub API to list directory contents
   const apiPath = path ? `contents/${path}` : "contents";
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/${apiPath}?ref=${branch}`;
@@ -287,8 +305,28 @@ async function fetchJsonFiles(
     // Also recurse into subdirectories to find JSON files
     const dirs = items.filter((f) => f.type === "dir");
     for (const dir of dirs) {
-      const subResult = await fetchJsonFiles(owner, repo, dir.path, branch);
+      const subResult = await fetchJsonFiles(
+        owner,
+        repo,
+        dir.path,
+        branch,
+        depth + 1,
+        limits
+      );
       jsonFiles.push(...subResult.files);
+      if (jsonFiles.length > limits.maxFiles) {
+        return {
+          files: jsonFiles.slice(0, limits.maxFiles),
+          error: `Repository contains too many JSON files (> ${limits.maxFiles}). Narrow the path and try again.`,
+        };
+      }
+    }
+
+    if (jsonFiles.length > limits.maxFiles) {
+      return {
+        files: jsonFiles.slice(0, limits.maxFiles),
+        error: `Repository contains too many JSON files (> ${limits.maxFiles}). Narrow the path and try again.`,
+      };
     }
 
     return { files: jsonFiles };
@@ -301,26 +339,6 @@ async function fetchJsonFiles(
 }
 
 // ─── Convert Graph Policy to Template ────────────────────────────────────────
-
-function inferCategory(displayName: string): TemplateCategory {
-  const name = displayName.toLowerCase();
-  if (name.includes("workload") || name.includes("service principal"))
-    return "workload";
-  if (name.includes("agent")) return "agent";
-  if (name.includes("ztca") || name.includes("zero trust")) return "ztca";
-  if (name.includes("intune") || name.includes("compliant")) return "intune";
-  if (name.includes("app_") || name.includes("app -") || name.includes("app_-"))
-    return "app-specific";
-  if (
-    name.includes("global") ||
-    name.includes("foundation") ||
-    name.includes("mfa") ||
-    name.includes("block")
-  )
-    return "foundation";
-  if (name.includes("p2") || name.includes("risk")) return "p2";
-  return "baseline";
-}
 
 function inferPriority(policy: Record<string, unknown>): TemplatePriority {
   const conditions = policy.conditions as Record<string, unknown> | undefined;
@@ -530,6 +548,7 @@ export async function fetchGitHubTemplates(
   // classify each one and route to the appropriate bucket.
   const templates: PolicyTemplate[] = [];
   const errors: string[] = [];
+  let totalFetchedBytes = 0;
   const bundle: BaselineBundle = {
     groups: {},
     namedLocations: {},
@@ -545,6 +564,14 @@ export async function fetchGitHubTemplates(
         if (!resp.ok)
           throw new Error(`Failed to fetch ${file.name}: ${resp.status}`);
         const buf = await resp.arrayBuffer();
+        totalFetchedBytes += buf.byteLength;
+        if (totalFetchedBytes > MAX_TEMPLATE_TOTAL_BYTES) {
+          throw new Error(
+            `Template download exceeded safe size limit (${Math.round(
+              MAX_TEMPLATE_TOTAL_BYTES / (1024 * 1024)
+            )}MB). Narrow the repo path and retry.`
+          );
+        }
         const text = decodeBody(buf);
         return {
           name: file.name,

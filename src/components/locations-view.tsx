@@ -102,18 +102,18 @@ function LocationTypeIcon({ type }: { type: string }) {
 
 // ─── Policy reference row ────────────────────────────────────────────────────
 
-function PolicyRefRow({ ref: r }: { ref: PolicyReference }) {
+function PolicyRefRow({ policyRef }: { policyRef: PolicyReference }) {
   const stateClass =
-    r.policyState === "enabled"
+    policyRef.policyState === "enabled"
       ? "text-green-400"
-      : r.policyState === "enabledForReportingButNotEnforced"
+      : policyRef.policyState === "enabledForReportingButNotEnforced"
       ? "text-yellow-400"
       : "text-gray-500";
 
   const stateLabel =
-    r.policyState === "enabled"
+    policyRef.policyState === "enabled"
       ? "Enabled"
-      : r.policyState === "enabledForReportingButNotEnforced"
+      : policyRef.policyState === "enabledForReportingButNotEnforced"
       ? "Report-only"
       : "Disabled";
 
@@ -122,23 +122,23 @@ function PolicyRefRow({ ref: r }: { ref: PolicyReference }) {
       <span
         className={cn(
           "inline-block h-2 w-2 rounded-full shrink-0",
-          r.policyState === "enabled"
+          policyRef.policyState === "enabled"
             ? "bg-green-500"
-            : r.policyState === "enabledForReportingButNotEnforced"
+            : policyRef.policyState === "enabledForReportingButNotEnforced"
             ? "bg-yellow-500"
             : "bg-gray-600"
         )}
       />
-      <span className="text-gray-300 truncate flex-1">{r.policyName}</span>
+      <span className="text-gray-300 truncate flex-1">{policyRef.policyName}</span>
       <span
         className={cn(
           "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase",
-          r.usage === "include"
+          policyRef.usage === "include"
             ? "bg-blue-500/10 text-blue-400"
             : "bg-purple-500/10 text-purple-400"
         )}
       >
-        {r.usage}
+        {policyRef.usage}
       </span>
       <span className={cn("text-[10px]", stateClass)}>{stateLabel}</span>
     </div>
@@ -386,7 +386,7 @@ function LocationCard({ analysis }: { analysis: LocationAnalysis }) {
               </h4>
               <div className="space-y-1">
                 {analysis.directReferences.map((r) => (
-                  <PolicyRefRow key={`${r.policyId}-${r.usage}`} ref={r} />
+                  <PolicyRefRow key={`${r.policyId}-${r.usage}`} policyRef={r} />
                 ))}
               </div>
             </div>
@@ -400,7 +400,7 @@ function LocationCard({ analysis }: { analysis: LocationAnalysis }) {
               </h4>
               <div className="space-y-1">
                 {analysis.trustedLocationReferences.map((r) => (
-                  <PolicyRefRow key={`${r.policyId}-trusted-${r.usage}`} ref={r} />
+                  <PolicyRefRow key={`${r.policyId}-trusted-${r.usage}`} policyRef={r} />
                 ))}
               </div>
             </div>

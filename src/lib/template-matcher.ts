@@ -12,7 +12,6 @@ import {
   POLICY_TEMPLATES,
   TemplateCategory,
   TemplatePriority,
-  ADMIN_ROLE_IDS,
 } from "@/data/policy-templates";
 import { ROLE_NAME_MAP } from "@/lib/role-names";
 

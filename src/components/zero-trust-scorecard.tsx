@@ -30,13 +30,6 @@ const PILLAR_ICONS = {
   "assume-breach": ShieldAlert,
 } as const;
 
-function statusIcon(status: ScorecardSignal["status"]) {
-  if (status === "good") return CheckCircle2;
-  if (status === "warn") return AlertTriangle;
-  if (status === "bad") return XCircle;
-  return MinusCircle;
-}
-
 function statusColor(status: ScorecardSignal["status"]) {
   if (status === "good") return "text-emerald-400";
   if (status === "warn") return "text-amber-400";
@@ -57,13 +50,21 @@ function barColor(score: number) {
 }
 
 function SignalRow({ signal }: { signal: ScorecardSignal }) {
-  const Icon = statusIcon(signal.status);
+  const iconClass = cn("h-3.5 w-3.5 shrink-0", statusColor(signal.status));
   return (
     <div className="rounded-md border border-gray-800 bg-gray-950/50 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <Icon className={cn("h-3.5 w-3.5 shrink-0", statusColor(signal.status))} />
+            {signal.status === "good" ? (
+              <CheckCircle2 className={iconClass} />
+            ) : signal.status === "warn" ? (
+              <AlertTriangle className={iconClass} />
+            ) : signal.status === "bad" ? (
+              <XCircle className={iconClass} />
+            ) : (
+              <MinusCircle className={iconClass} />
+            )}
             <span className="text-sm font-medium text-gray-200">
               {signal.label}
             </span>
