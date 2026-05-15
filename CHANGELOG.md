@@ -5,6 +5,59 @@ All notable changes to the CA Policy Analyzer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-05-15
+
+### Added
+
+- **Offline Export Guide page** at [src/app/offline-export/page.tsx](src/app/offline-export/page.tsx) with step-by-step PowerShell export instructions and import flow for fully offline analysis.
+- **Canonical offline export regression fixture** at [docs/fixtures/offline-export-powershell-v2-shape.json](docs/fixtures/offline-export-powershell-v2-shape.json), covering real-world Graph PowerShell v2/Beta export edge cases.
+- **Opening-screen mode clarity** in [src/app/page.tsx](src/app/page.tsx): two explicit paths (**Offline export import** vs **Direct tenant connection**) with offline marked as **Recommended**.
+- **Safety-limit UX hints**:
+  - Offline import size limit note on opening screen
+  - GitHub template loader limits note in [src/components/templates-view.tsx](src/components/templates-view.tsx)
+
+### Changed
+
+- **Offline mode is now first-class in UX**:
+  - `Connect Tenant` action moved into the **Direct tenant connection** option card on the opening page
+  - Header now shows **Offline mode** when offline workflow is active (instead of showing connect CTA)
+- **Toolbar responsiveness improved** in [src/app/page.tsx](src/app/page.tsx):
+  - Tabs + actions now render in separate rows to prevent clipping/cut-off on narrower desktop widths
+- **Excel export engine migrated from `xlsx` to `exceljs`**:
+  - Reimplemented workbook generation in [src/lib/export-utils.ts](src/lib/export-utils.ts)
+  - Preserved Summary / Policies / Findings / CIS Alignment sheets and core column sizing
+  - Removed direct `xlsx` dependency, added `exceljs`
+- **Offline export docs updated for Graph PowerShell v2**:
+  - Replaced `Select-MgProfile beta` flow with Beta cmdlets/module usage in README and in-app guide
+
+### Fixed
+
+- **Offline import now renders results without authentication gate**:
+  - Fixed state flow where imported results were computed but not shown unless signed in
+- **Offline JSON parser compatibility expanded** in [src/lib/offline-import.ts](src/lib/offline-import.ts):
+  - Supports single-object collections (not only arrays), including `conditionalAccessPolicies` object payloads
+  - Handles PowerShell `PascalCase` keys and Graph-style wrappers
+  - Reads key fields from `AdditionalProperties` where Graph PowerShell serializes them (`templateId`, named-location metadata, directory object display/type)
+  - Normalizes null array fields (`IncludeLocations`, `ExcludeLocations`, etc.) to prevent analyzer crashes
+  - Ignores null placeholder guest/auth-strength objects so offline/live findings align
+- **Baseline Gap duplicate-key warning resolved**:
+  - Fixed duplicate `unknown` persona bucket generation in [src/lib/baseline-gap.ts](src/lib/baseline-gap.ts)
+- **Hydration mismatch noise reduced**:
+  - Added `suppressHydrationWarning` on root `<html>` in [src/app/layout.tsx](src/app/layout.tsx) to tolerate extension-injected attributes
+
+### Security
+
+- **Offline import hardening**
+  - Added max file size guard (**20MB**) before parsing in [src/app/page.tsx](src/app/page.tsx)
+  - Added recursion depth guard (**40 levels**) in key normalization in [src/lib/offline-import.ts](src/lib/offline-import.ts)
+- **GitHub template loader hardening** in [src/lib/github-templates.ts](src/lib/github-templates.ts):
+  - Max crawl depth: **4**
+  - Max JSON files discovered: **400**
+  - Max total downloaded template bytes: **15MB**
+  - Returns explicit operator-facing errors when limits are exceeded
+- **Security posture improvement from dependency migration**
+  - Migrating away from `xlsx` removes known high-severity advisory exposure tied to that package in prior audit output
+
 ## [1.14.8] - 2026-05-08
 
 ### Changed
